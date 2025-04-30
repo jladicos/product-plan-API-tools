@@ -237,6 +237,73 @@ class DataExporter:
 			processed_ideas.append(processed_idea)
 		
 		return processed_ideas
+		
+	@staticmethod
+	def extract_custom_text_fields(ideas_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+		"""
+		Process ideas data to add columns for each custom text field
+		
+		Args:
+			ideas_data: List of idea dictionaries
+			
+		Returns:
+			List of processed idea dictionaries with added custom text field columns
+		"""
+		processed_ideas = []
+		all_field_labels = set()
+		
+		print("Extracting custom text fields...")
+		
+		# First pass: collect all unique field labels
+		for idea in ideas_data:
+			custom_fields = []
+			
+			if 'custom_text_fields' in idea and idea['custom_text_fields']:
+				# Handle different possible formats of custom_text_fields
+				if isinstance(idea['custom_text_fields'], str):
+					try:
+						# Parse JSON string to list of dictionaries
+						custom_fields = json.loads(idea['custom_text_fields'])
+					except json.JSONDecodeError:
+						print(f"Warning: Could not parse custom_text_fields for idea {idea.get('id', 'unknown')}: {idea['custom_text_fields']}")
+				elif isinstance(idea['custom_text_fields'], list):
+					custom_fields = idea['custom_text_fields']
+				
+				# Extract all unique labels
+				for field in custom_fields:
+					if isinstance(field, dict) and 'label' in field:
+						all_field_labels.add(field['label'])
+		
+		print(f"Found {len(all_field_labels)} unique custom text field labels: {all_field_labels}")
+		
+		# Second pass: create columns for each label
+		for idea in ideas_data:
+			# Clone the idea dictionary
+			processed_idea = idea.copy()
+			
+			# Initialize all custom field columns with empty strings
+			for label in all_field_labels:
+				processed_idea[f"Custom: {label}"] = ""
+			
+			# Parse custom_text_fields and populate columns
+			custom_fields = []
+			if 'custom_text_fields' in idea and idea['custom_text_fields']:
+				if isinstance(idea['custom_text_fields'], str):
+					try:
+						custom_fields = json.loads(idea['custom_text_fields'])
+					except json.JSONDecodeError:
+						pass  # Already logged in first pass
+				elif isinstance(idea['custom_text_fields'], list):
+					custom_fields = idea['custom_text_fields']
+				
+				# Add value to corresponding column
+				for field in custom_fields:
+					if isinstance(field, dict) and 'label' in field and 'value' in field:
+						processed_idea[f"Custom: {field['label']}"] = field['value']
+			
+			processed_ideas.append(processed_idea)
+		
+		return processed_ideas
 
 
 def parse_arguments():
@@ -308,9 +375,14 @@ def main():
 		
 		# Process response and export data
 		if 'results' in response:
-			# Always get team mapping and process ideas with team columns
+			# First, extract custom text fields and create columns for each one
+			print("Processing custom text fields...")
+			processed_data = DataExporter.extract_custom_text_fields(response['results'])
+			
+			# Then get team mapping and process ideas with team columns
 			team_mapping = api.get_team_id_to_name_mapping()
-			processed_data = DataExporter.process_ideas_with_team_columns(response['results'], team_mapping)
+			processed_data = DataExporter.process_ideas_with_team_columns(processed_data, team_mapping)
+			
 			DataExporter.to_excel(processed_data, args.output)
 		else:
 			print("Error: Unexpected API response format")

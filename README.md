@@ -11,6 +11,7 @@ A flexible Python script to fetch data from the ProductPlan API and export it to
 - Pagination support
 - Token-based authentication
 - Automatic team columns on ideas exports (1 if assigned, 0 if not)
+- Automatic extraction of custom text fields into separate columns
 - Simplified `make` commands for ease of use
 - Docker containerization for easy deployment
 
@@ -169,25 +170,8 @@ docker run --rm -v $(pwd):/app productplan-api \
 
 When fetching ideas data, columns for each team are automatically added. For each idea, a column will be added for each team with a value of 1 if the team is assigned to the idea, and 0 if not.
 
-## Troubleshooting
+## Custom Text Field Extraction
 
-### Common Issues
+When fetching ideas data, any custom text fields are automatically extracted and added as separate columns. The script:
 
-1. **Authentication Failed (401)**:
-   - Verify that your token in `token.txt` is correct and not expired
-   - Ensure there are no extra spaces or newlines in the token file
-
-2. **Permission Error When Writing Output**:
-   - Check that the current directory is writable
-   - Try specifying a different output path with the OUTPUT parameter
-
-3. **Docker Not Running**:
-   - Make sure Docker Desktop is running on your machine
-   - Try restarting Docker if you're having issues
-
-### Getting Help
-
-For more information:
-- Run `make help` to see all available commands and options
-- Refer to the ProductPlan API documentation for endpoint details
-- Check the User Guide document for detailed usage examples
+1. Identifies all unique custom text

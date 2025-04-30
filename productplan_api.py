@@ -197,110 +197,153 @@ class DataExporter:
 			raise
 	
 	@staticmethod
-	def process_ideas_with_team_columns(ideas_data: List[Dict[str, Any]], team_mapping: Dict[int, str]) -> List[Dict[str, Any]]:
+	def parse_custom_text_fields(custom_text_fields_data) -> List[Dict[str, Any]]:
 		"""
-		Process ideas data to add columns for each team
+		Parse custom text fields from various formats
+		
+		Args:
+			custom_text_fields_data: Raw custom text fields data (string or list)
+			
+		Returns:
+			List of parsed custom field dictionaries
+		"""
+		custom_fields = []
+		
+		if not custom_text_fields_data:
+			return custom_fields
+			
+		# Handle different possible formats of custom_text_fields
+		if isinstance(custom_text_fields_data, str):
+			try:
+				# Parse JSON string to list of dictionaries
+				custom_fields = json.loads(custom_text_fields_data)
+			except json.JSONDecodeError:
+				# Log error only if there's actually content to parse
+				if custom_text_fields_data.strip():
+					print(f"Warning: Could not parse custom_text_fields: {custom_text_fields_data}")
+		elif isinstance(custom_text_fields_data, list):
+			custom_fields = custom_text_fields_data
+			
+		return custom_fields
+	
+	@staticmethod
+	def parse_team_ids(team_ids_data) -> List[int]:
+		"""
+		Parse team IDs from various formats
+		
+		Args:
+			team_ids_data: Raw team IDs data (string or list)
+			
+		Returns:
+			List of parsed team IDs
+		"""
+		team_ids = []
+		
+		if not team_ids_data:
+			return team_ids
+			
+		# Handle different possible formats of team_ids
+		if isinstance(team_ids_data, list):
+			team_ids = team_ids_data
+		elif isinstance(team_ids_data, str):
+			# Handle comma-separated string of team IDs
+			try:
+				team_ids = [int(tid.strip()) for tid in team_ids_data.split(',') if tid.strip()]
+			except ValueError:
+				print(f"Warning: Could not parse team_ids: {team_ids_data}")
+				
+		return team_ids
+	
+	@staticmethod
+	def add_custom_field_columns(idea: Dict[str, Any], field_labels: set) -> Dict[str, Any]:
+		"""
+		Add custom field columns to a single idea
+		
+		Args:
+			idea: Original idea dictionary
+			field_labels: Set of all possible custom field labels
+			
+		Returns:
+			Modified idea dictionary with custom field columns
+		"""
+		# Clone the idea dictionary
+		processed_idea = idea.copy()
+		
+		# Initialize all custom field columns with empty strings
+		for label in field_labels:
+			processed_idea[f"Custom: {label}"] = ""
+			
+		# Parse and process custom text fields
+		custom_fields = DataExporter.parse_custom_text_fields(idea.get('custom_text_fields'))
+			
+		# Add value to corresponding column
+		for field in custom_fields:
+			if isinstance(field, dict) and 'label' in field and 'value' in field:
+				processed_idea[f"Custom: {field['label']}"] = field['value']
+				
+		return processed_idea
+	
+	@staticmethod
+	def add_team_columns(idea: Dict[str, Any], team_mapping: Dict[int, str]) -> Dict[str, Any]:
+		"""
+		Add team columns to a single idea
+		
+		Args:
+			idea: Original idea dictionary
+			team_mapping: Dictionary mapping team IDs to team names
+			
+		Returns:
+			Modified idea dictionary with team columns
+		"""
+		# Use the input idea (which may already have custom fields added)
+		processed_idea = idea
+		
+		# Parse team IDs
+		team_ids = DataExporter.parse_team_ids(idea.get('team_ids'))
+		
+		# Add columns for each team
+		for team_id, team_name in team_mapping.items():
+			# Set value to 1 if team_id is in team_ids, otherwise 0
+			processed_idea[team_name] = 1 if team_id in team_ids else 0
+			
+		return processed_idea
+		
+	@staticmethod
+	def process_ideas(ideas_data: List[Dict[str, Any]], team_mapping: Dict[int, str]) -> List[Dict[str, Any]]:
+		"""
+		Process ideas data to add both custom text field columns and team columns
 		
 		Args:
 			ideas_data: List of idea dictionaries
 			team_mapping: Dictionary mapping team IDs to team names
 			
 		Returns:
-			List of processed idea dictionaries with added team columns
+			List of processed idea dictionaries with added columns
 		"""
-		processed_ideas = []
-		
-		print("Adding team columns to ideas data...")
-		for idea in ideas_data:
-			# Clone the idea dictionary
-			processed_idea = idea.copy()
-			
-			# Get the team_ids
-			team_ids = []
-			if 'team_ids' in idea:
-				# Handle different possible formats of team_ids
-				if isinstance(idea['team_ids'], list):
-					team_ids = idea['team_ids']
-				elif isinstance(idea['team_ids'], str):
-					# Handle comma-separated string of team IDs
-					try:
-						team_ids = [int(tid.strip()) for tid in idea['team_ids'].split(',') if tid.strip()]
-					except ValueError:
-						print(f"Warning: Could not parse team_ids for idea {idea.get('id', 'unknown')}: {idea['team_ids']}")
-			
-			# Add columns for each team
-			for team_id, team_name in team_mapping.items():
-				# Use the team name directly as the column name
-				# Set value to 1 if team_id is in team_ids, otherwise 0
-				processed_idea[team_name] = 1 if team_id in team_ids else 0
-			
-			processed_ideas.append(processed_idea)
-		
-		return processed_ideas
-		
-	@staticmethod
-	def extract_custom_text_fields(ideas_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-		"""
-		Process ideas data to add columns for each custom text field
-		
-		Args:
-			ideas_data: List of idea dictionaries
-			
-		Returns:
-			List of processed idea dictionaries with added custom text field columns
-		"""
-		processed_ideas = []
+		# First pass: collect all unique custom field labels
 		all_field_labels = set()
+		print("Collecting unique custom text field labels...")
 		
-		print("Extracting custom text fields...")
-		
-		# First pass: collect all unique field labels
 		for idea in ideas_data:
-			custom_fields = []
-			
-			if 'custom_text_fields' in idea and idea['custom_text_fields']:
-				# Handle different possible formats of custom_text_fields
-				if isinstance(idea['custom_text_fields'], str):
-					try:
-						# Parse JSON string to list of dictionaries
-						custom_fields = json.loads(idea['custom_text_fields'])
-					except json.JSONDecodeError:
-						print(f"Warning: Could not parse custom_text_fields for idea {idea.get('id', 'unknown')}: {idea['custom_text_fields']}")
-				elif isinstance(idea['custom_text_fields'], list):
-					custom_fields = idea['custom_text_fields']
-				
-				# Extract all unique labels
-				for field in custom_fields:
-					if isinstance(field, dict) and 'label' in field:
-						all_field_labels.add(field['label'])
+			custom_fields = DataExporter.parse_custom_text_fields(idea.get('custom_text_fields'))
+			for field in custom_fields:
+				if isinstance(field, dict) and 'label' in field:
+					all_field_labels.add(field['label'])
 		
 		print(f"Found {len(all_field_labels)} unique custom text field labels: {all_field_labels}")
 		
-		# Second pass: create columns for each label
+		# Second pass: add both custom field and team columns
+		processed_ideas = []
+		print("Processing ideas data (adding custom fields and team columns)...")
+		
 		for idea in ideas_data:
-			# Clone the idea dictionary
-			processed_idea = idea.copy()
+			# First add custom field columns
+			processed_idea = DataExporter.add_custom_field_columns(idea, all_field_labels)
 			
-			# Initialize all custom field columns with empty strings
-			for label in all_field_labels:
-				processed_idea[f"Custom: {label}"] = ""
+			# Then add team columns (modifies the same dictionary)
+			processed_idea = DataExporter.add_team_columns(processed_idea, team_mapping)
 			
-			# Parse custom_text_fields and populate columns
-			custom_fields = []
-			if 'custom_text_fields' in idea and idea['custom_text_fields']:
-				if isinstance(idea['custom_text_fields'], str):
-					try:
-						custom_fields = json.loads(idea['custom_text_fields'])
-					except json.JSONDecodeError:
-						pass  # Already logged in first pass
-				elif isinstance(idea['custom_text_fields'], list):
-					custom_fields = idea['custom_text_fields']
-				
-				# Add value to corresponding column
-				for field in custom_fields:
-					if isinstance(field, dict) and 'label' in field and 'value' in field:
-						processed_idea[f"Custom: {field['label']}"] = field['value']
-			
+			# Add to the result list
 			processed_ideas.append(processed_idea)
 		
 		return processed_ideas
@@ -375,13 +418,11 @@ def main():
 		
 		# Process response and export data
 		if 'results' in response:
-			# First, extract custom text fields and create columns for each one
-			print("Processing custom text fields...")
-			processed_data = DataExporter.extract_custom_text_fields(response['results'])
-			
-			# Then get team mapping and process ideas with team columns
+			# Get team mapping first (requires API call)
 			team_mapping = api.get_team_id_to_name_mapping()
-			processed_data = DataExporter.process_ideas_with_team_columns(processed_data, team_mapping)
+			
+			# Process both custom text fields and team columns in a single pass
+			processed_data = DataExporter.process_ideas(response['results'], team_mapping)
 			
 			DataExporter.to_excel(processed_data, args.output)
 		else:

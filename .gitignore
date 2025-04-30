@@ -1,0 +1,17 @@
+# Ignore API token
+token.txt
+
+# Ignore output files
+*.xlsx
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+venv/
+.venv/
+
+# OS specific
+.DS_Store
+Thumbs.db

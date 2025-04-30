@@ -1,6 +1,6 @@
 # ProductPlan API Client
 
-A flexible Python script to fetch data from the ProductPlan API and export it to Excel format, designed to run in a Docker container.
+A flexible Python script to fetch data from the ProductPlan API and export it to Excel format, designed to run in a Docker container with simplified `make` commands.
 
 ## Features
 
@@ -11,6 +11,7 @@ A flexible Python script to fetch data from the ProductPlan API and export it to
 - Pagination support
 - Token-based authentication
 - Automatic team columns on ideas exports (1 if assigned, 0 if not)
+- Simplified `make` commands for ease of use
 - Docker containerization for easy deployment
 
 ## Setup
@@ -18,6 +19,7 @@ A flexible Python script to fetch data from the ProductPlan API and export it to
 ### Prerequisites
 
 - Docker installed on your system
+- Make installed on your system (pre-installed on macOS and Linux)
 - A valid ProductPlan API token
 
 ### Getting Started
@@ -28,63 +30,90 @@ A flexible Python script to fetch data from the ProductPlan API and export it to
    cd productplan-api-client
    ```
 
-2. Create a `token.txt` file with your ProductPlan API token:
+2. Run the setup script:
    ```
-   echo "YOUR-BEARER-TOKEN-HERE" > token.txt
+   ./setup.sh
    ```
+   
+   The setup script will:
+   - Check for Docker and Make installation
+   - Help you create a token.txt file with your API token
+   - Build the Docker image
+   - Provide quick-start instructions
 
-3. Build the Docker image:
-   ```
-   docker build -t productplan-api .
-   ```
-
-## Usage
+## Usage with Make Commands
 
 ### Basic Usage
 
-To get started and fetch data from the ProductPlan API, run:
+Use these simplified commands to get data from the ProductPlan API:
+
+```bash
+# Fetch all ideas (with team columns)
+make ideas
+
+# Fetch all teams
+make teams
+
+# Fetch both ideas and teams (saved as ideas.xlsx and teams.xlsx)
+make all
+
+# See all available commands and options
+make help
+```
+
+### Customizing Output Filename
+
+```bash
+# Set custom output filename
+make ideas OUTPUT=my_ideas.xlsx
+make teams OUTPUT=my_teams.xlsx
+```
+
+### Filtering Results
+
+Use the FILTERS parameter with key:value pairs (separate multiple filters with spaces):
+
+```bash
+# Single filter
+make ideas FILTERS="name:Feature Request"
+
+# Multiple filters
+make ideas FILTERS="name:Feature Request channel:Sales"
+```
+
+### Pagination Options
+
+```bash
+# Get only a specific page (not all pages)
+make ideas ALL_PAGES=false PAGE=2
+
+# Customize page size
+make ideas PAGE_SIZE=500
+```
+
+### Advanced Usage
+
+For maximum flexibility, use the `custom` command:
+
+```bash
+make custom ENDPOINT=ideas OUTPUT=custom.xlsx PAGE_SIZE=500 FILTERS="name:New Feature"
+```
+
+## Usage with Direct Docker Commands
+
+You can still use the direct Docker commands if needed:
 
 ```bash
 # Fetch the first page of ideas (includes team columns)
 docker run --rm -v $(pwd):/app productplan-api --endpoint ideas
 
-# Fetch the first page of teams
-docker run --rm -v $(pwd):/app productplan-api --endpoint teams
-```
-
-This will fetch the first page of data and save it to `output.xlsx` in the current directory.
-
-> **Important:** Running the container without any arguments will display the help text, not fetch data. You must explicitly specify an endpoint (e.g., `--endpoint ideas` or `--endpoint teams`) to retrieve data.
-
-#### Fetching All Data
-
-To fetch all items across all pages:
-
-```bash
-# Fetch all ideas (includes team columns)
+# Fetch all ideas
 docker run --rm -v $(pwd):/app productplan-api --endpoint ideas --all-pages
 
 # Fetch all teams
 docker run --rm -v $(pwd):/app productplan-api --endpoint teams --all-pages
-```
 
-This will automatically paginate through all available data, combine it, and save it to `output.xlsx`.
-
-### Team Columns on Ideas Data
-
-When fetching ideas data, columns for each team are automatically added. For each idea, a column will be added for each team with a value of 1 if the team is assigned to the idea, and 0 if not.
-
-This feature:
-1. Fetches all teams first to build a mapping of team IDs to team names
-2. Then fetches the ideas data
-3. For each idea, adds a column for each team with 1 or 0 based on team assignment
-4. Keeps the original team_ids column in the output
-
-### Command-line Arguments
-
-You can pass various command-line arguments to customize the API request:
-
-```bash
+# Custom filters and options
 docker run --rm -v $(pwd):/app productplan-api \
   --endpoint ideas \
   --page 1 \
@@ -94,7 +123,20 @@ docker run --rm -v $(pwd):/app productplan-api \
   --filter channel "Sales"
 ```
 
-#### Available Arguments
+## Available Options
+
+### Make Command Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `OUTPUT` | Output filename | productplan_data.xlsx |
+| `PAGE` | Page number | 1 |
+| `PAGE_SIZE` | Number of items per page | 200 |
+| `TOKEN_FILE` | File containing the API token | token.txt |
+| `ALL_PAGES` | Fetch all pages | true |
+| `FILTERS` | Space-separated key:value pairs | (none) |
+
+### Docker Command Options
 
 - `--endpoint`: API endpoint to query (available: 'ideas', 'teams')
 - `--token-file`: File containing the API token (default: token.txt)
@@ -104,19 +146,10 @@ docker run --rm -v $(pwd):/app productplan-api \
 - `--output`: Output filename (default: output.xlsx)
 - `--all-pages`: Fetch all pages of results automatically (ignores the --page parameter)
 
-### Filtering
+## Filtering
 
-You can filter the API results by adding one or more `--filter` arguments.
+### Available Filters for Ideas Endpoint
 
-#### Filtering Ideas
-```bash
-docker run --rm -v $(pwd):/app productplan-api \
-  --endpoint ideas \
-  --filter name "New Feature" \
-  --filter customer "Acme Inc"
-```
-
-Available filter attributes for the ideas endpoint:
 - id
 - name
 - description
@@ -127,16 +160,14 @@ Available filter attributes for the ideas endpoint:
 - source_email
 - location_status
 
-#### Filtering Teams
-```bash
-docker run --rm -v $(pwd):/app productplan-api \
-  --endpoint teams \
-  --filter name "Product Team"
-```
+### Available Filters for Teams Endpoint
 
-Available filter attributes for the teams endpoint:
 - id
 - name
+
+## Team Columns on Ideas Data
+
+When fetching ideas data, columns for each team are automatically added. For each idea, a column will be added for each team with a value of 1 if the team is assigned to the idea, and 0 if not.
 
 ## Troubleshooting
 
@@ -147,12 +178,16 @@ Available filter attributes for the teams endpoint:
    - Ensure there are no extra spaces or newlines in the token file
 
 2. **Permission Error When Writing Output**:
-   - Check that the current directory is writable by Docker
-   - Use the absolute path for the output file
+   - Check that the current directory is writable
+   - Try specifying a different output path with the OUTPUT parameter
 
-3. **Rate Limiting**:
-   - If you encounter rate limiting, try reducing the request frequency
+3. **Docker Not Running**:
+   - Make sure Docker Desktop is running on your machine
+   - Try restarting Docker if you're having issues
 
 ### Getting Help
 
-For more information about the ProductPlan API, refer to their official documentation.
+For more information:
+- Run `make help` to see all available commands and options
+- Refer to the ProductPlan API documentation for endpoint details
+- Check the User Guide document for detailed usage examples

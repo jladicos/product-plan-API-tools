@@ -174,4 +174,40 @@ When fetching ideas data, columns for each team are automatically added. For eac
 
 When fetching ideas data, any custom text fields are automatically extracted and added as separate columns. The script:
 
-1. Identifies all unique custom text
+1. Identifies all unique custom text field labels across all ideas
+2. Creates a new column for each unique label with the prefix "Custom: "
+3. Populates each column with the corresponding value for each idea
+
+For example, if your `custom_text_fields` column contains data like:
+```
+[{'label': 'Problem to be solved', 'value': 'One authentication point for all products'}, {'label': 'Success criteria', 'value': 'Reduced login failures by 50%'}]
+```
+
+The exported Excel file will include two additional columns:
+- "Custom: Problem to be solved" with value "One authentication point for all products"
+- "Custom: Success criteria" with value "Reduced login failures by 50%"
+
+This happens automatically for any number of custom text fields present in your data, with no configuration required.
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Authentication Failed (401)**:
+   - Verify that your token in `token.txt` is correct and not expired
+   - Ensure there are no extra spaces or newlines in the token file
+
+2. **Permission Error When Writing Output**:
+   - Check that the current directory is writable
+   - Try specifying a different output path with the OUTPUT parameter
+
+3. **Docker Not Running**:
+   - Make sure Docker Desktop is running on your machine
+   - Try restarting Docker if you're having issues
+
+### Getting Help
+
+For more information:
+- Run `make help` to see all available commands and options
+- Refer to the ProductPlan API documentation for endpoint details
+- Check the User Guide document for detailed usage examples

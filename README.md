@@ -27,7 +27,7 @@ A flexible Python script to fetch data from the ProductPlan API and export it to
 
 1. Clone this repository:
    ```
-   git clone <repository-url>
+   git clone https://github.com/jladicos/product-plan-API-tools
    cd productplan-api-client
    ```
 

@@ -66,7 +66,8 @@ If you encounter issues running the setup script, try the following:
 |---------|-------------|
 | `make ideas` | Get all ideas with team columns |
 | `make teams` | Get all teams |
-| `make all` | Get both ideas and teams |
+| `make idea-forms` | Get all idea forms with detailed information |
+| `make all` | Get ideas, teams, and idea forms |
 | `make help` | See all available commands and options |
 
 ## Working with Ideas
@@ -111,6 +112,31 @@ make teams OUTPUT=my_teams.xlsx
 make teams FILTERS="name:Product Team"
 ```
 
+## Working with Idea Forms
+
+The commands for idea forms follow the same pattern, but with enhanced functionality:
+
+```bash
+# Get all idea forms with detailed information (includes custom fields, instructions, etc.)
+make idea-forms
+
+# Specify a custom output filename
+make idea-forms OUTPUT=my_forms.xlsx
+
+# Filter idea forms (filters may vary based on your ProductPlan configuration)
+make idea-forms FILTERS="name:Feature Form"
+```
+
+### Enhanced Idea Forms Data
+
+When fetching idea forms, the tool automatically:
+- Retrieves detailed information for each form using individual API calls
+- Flattens custom text fields into separate columns (e.g., `Custom_Text_Field_1_Label`)
+- Flattens custom dropdown fields with their allowed values (e.g., `Custom_Dropdown_Field_1_Allowed_Values`)
+- Includes form metadata like title, instructions, enabled status, and timestamps
+
+This provides much richer data than the basic form list endpoint.
+
 ## Advanced Usage
 
 ### Custom Commands
@@ -118,7 +144,7 @@ make teams FILTERS="name:Product Team"
 For maximum flexibility, use the `custom` command:
 
 ```bash
-make custom ENDPOINT=ideas OUTPUT=custom.xlsx PAGE_SIZE=500
+make custom ENDPOINT=idea-forms OUTPUT=custom.xlsx PAGE_SIZE=500
 ```
 
 ### All Available Options
@@ -130,6 +156,7 @@ make custom ENDPOINT=ideas OUTPUT=custom.xlsx PAGE_SIZE=500
 | `PAGE_SIZE` | Number of items per page | 200 |
 | `TOKEN_FILE` | File containing the API token | token.txt |
 | `ALL_PAGES` | Fetch all pages | true |
+| `LOCATION_STATUS` | Filter ideas by location status | not_archived |
 | `FILTERS` | Space-separated key:value pairs | (none) |
 
 ## Using Direct Docker Commands
@@ -137,7 +164,14 @@ make custom ENDPOINT=ideas OUTPUT=custom.xlsx PAGE_SIZE=500
 You can still use the direct Docker commands if needed:
 
 ```bash
+# Ideas endpoint
 docker run --rm -v $(pwd):/app productplan-api --endpoint ideas --all-pages --output output.xlsx
+
+# Teams endpoint
+docker run --rm -v $(pwd):/app productplan-api --endpoint teams --all-pages --output output.xlsx
+
+# Idea forms endpoint with detailed information
+docker run --rm -v $(pwd):/app productplan-api --endpoint idea-forms --all-pages --output output.xlsx
 ```
 
 ## Troubleshooting

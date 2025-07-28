@@ -6,6 +6,7 @@ A flexible Python script to fetch data from the ProductPlan API and export it to
 
 - Fetch ideas from ProductPlan API
 - Fetch teams from ProductPlan API
+- Fetch idea forms from ProductPlan API with detailed information (includes custom fields, instructions, etc.)
 - Export data to Excel
 - Filter results using command-line arguments
 - Pagination support
@@ -55,7 +56,10 @@ make ideas
 # Fetch all teams
 make teams
 
-# Fetch both ideas and teams (saved as ideas.xlsx and teams.xlsx)
+# Fetch all idea forms with detailed information
+make idea-forms
+
+# Fetch all data types (saved as ideas.xlsx, teams.xlsx, and idea-forms.xlsx)
 make all
 
 # See all available commands and options
@@ -68,6 +72,7 @@ make help
 # Set custom output filename
 make ideas OUTPUT=my_ideas.xlsx
 make teams OUTPUT=my_teams.xlsx
+make idea-forms OUTPUT=my_forms.xlsx
 ```
 
 ### Filtering Results
@@ -97,7 +102,7 @@ make ideas PAGE_SIZE=500
 For maximum flexibility, use the `custom` command:
 
 ```bash
-make custom ENDPOINT=ideas OUTPUT=custom.xlsx PAGE_SIZE=500 FILTERS="name:New Feature"
+make custom ENDPOINT=idea-forms OUTPUT=custom.xlsx PAGE_SIZE=500 FILTERS="name:New Feature"
 ```
 
 ## Usage with Direct Docker Commands
@@ -114,9 +119,12 @@ docker run --rm -v $(pwd):/app productplan-api --endpoint ideas --all-pages
 # Fetch all teams
 docker run --rm -v $(pwd):/app productplan-api --endpoint teams --all-pages
 
+# Fetch all idea forms with detailed information
+docker run --rm -v $(pwd):/app productplan-api --endpoint idea-forms --all-pages
+
 # Custom filters and options
 docker run --rm -v $(pwd):/app productplan-api \
-  --endpoint ideas \
+  --endpoint idea-forms \
   --page 1 \
   --page-size 100 \
   --output custom_filename.xlsx \
@@ -139,7 +147,7 @@ docker run --rm -v $(pwd):/app productplan-api \
 
 ### Docker Command Options
 
-- `--endpoint`: API endpoint to query (available: 'ideas', 'teams')
+- `--endpoint`: API endpoint to query (available: 'ideas', 'teams', 'idea-forms')
 - `--token-file`: File containing the API token (default: token.txt)
 - `--page`: Page number (default: 1)
 - `--page-size`: Number of items per page (default: 200, max: 500)
@@ -151,20 +159,27 @@ docker run --rm -v $(pwd):/app productplan-api \
 
 ### Available Filters for Ideas Endpoint
 
-- id
-- name
-- description
-- channel
-- customer
-- opportunities_count
-- source_name
-- source_email
-- location_status
+- id, name, description, channel, customer, opportunities_count, source_name, source_email, location_status
+- Enhanced processing automatically fetches detailed information for each idea including:
+  - Created and updated timestamps (created_at, updated_at)
+  - Custom dropdown fields with their selected values
+  - Tags, opportunity IDs, and idea form references
+  - All custom fields are flattened into separate Excel columns for easy analysis
+- Default behavior excludes archived ideas (use LOCATION_STATUS=all to include them)
 
 ### Available Filters for Teams Endpoint
 
 - id
 - name
+
+### Available Filters for Idea Forms Endpoint
+
+- Endpoint supports pagination and filtering (specific filters may vary based on your ProductPlan configuration)
+- Enhanced processing automatically fetches detailed information for each form including:
+  - Form title, instructions, enabled status, timestamps
+  - Custom text fields with labels
+  - Custom dropdown fields with labels and allowed values
+  - All custom fields are flattened into separate Excel columns for easy analysis
 
 ## Team Columns on Ideas Data
 

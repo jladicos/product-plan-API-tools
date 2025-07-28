@@ -149,11 +149,28 @@ class ProductPlanAPI:
 				 filters: Optional[Dict[str, Any]] = None, get_all: bool = False) -> Dict[str, Any]:
 		"""Get ideas from the ProductPlan API"""
 		return self.get_data("discovery/ideas", page, page_size, filters, get_all)
+	
+	def get_idea_details(self, idea_id: int) -> Dict[str, Any]:
+		"""Get detailed information for a specific idea by ID"""
+		endpoint = f"discovery/ideas/{idea_id}"
+		print(f"Fetching detailed information for idea ID: {idea_id}")
+		return self._make_request(endpoint)
 			
 	def get_teams(self, page: int = 1, page_size: int = 200, 
 				 filters: Optional[Dict[str, Any]] = None, get_all: bool = False) -> Dict[str, Any]:
 		"""Get teams from the ProductPlan API"""
 		return self.get_data("teams", page, page_size, filters, get_all)
+	
+	def get_idea_forms(self, page: int = 1, page_size: int = 200, 
+					  filters: Optional[Dict[str, Any]] = None, get_all: bool = False) -> Dict[str, Any]:
+		"""Get idea forms from the ProductPlan API"""
+		return self.get_data("discovery/idea_forms", page, page_size, filters, get_all)
+	
+	def get_idea_form_details(self, form_id: int) -> Dict[str, Any]:
+		"""Get detailed information for a specific idea form by ID"""
+		endpoint = f"discovery/idea_forms/{form_id}"
+		print(f"Fetching detailed information for idea form ID: {form_id}")
+		return self._make_request(endpoint)
 
 	def get_team_id_to_name_mapping(self) -> Dict[int, str]:
 		"""
@@ -173,6 +190,149 @@ class ProductPlanAPI:
 		
 		print(f"Created mapping for {len(team_map)} teams")
 		return team_map
+	
+	def get_enhanced_idea_forms(self, page: int = 1, page_size: int = 200, 
+							   filters: Optional[Dict[str, Any]] = None, get_all: bool = False) -> List[Dict[str, Any]]:
+		"""
+		Get idea forms with enhanced details by fetching individual form information
+		
+		Returns:
+			List of enhanced idea form dictionaries with detailed information
+		"""
+		print("Fetching idea forms list...")
+		forms_response = self.get_idea_forms(page, page_size, filters, get_all)
+		
+		if 'results' not in forms_response:
+			print("No results found in idea forms response")
+			return []
+		
+		forms = forms_response['results']
+		enhanced_forms = []
+		
+		print(f"Fetching detailed information for {len(forms)} idea forms...")
+		
+		for i, form in enumerate(forms, 1):
+			if 'id' not in form:
+				print(f"Warning: Form {i} has no ID, skipping detailed fetch")
+				enhanced_forms.append(form)
+				continue
+				
+			try:
+				form_id = form['id']
+				print(f"Processing form {i}/{len(forms)}: ID {form_id}")
+				
+				# Get detailed information for this form
+				detailed_form = self.get_idea_form_details(form_id)
+				
+				# Merge the detailed information with the original form data
+				enhanced_form = {**form, **detailed_form}
+				enhanced_forms.append(enhanced_form)
+				
+			except Exception as e:
+				print(f"Warning: Failed to fetch details for form ID {form.get('id', 'unknown')}: {e}")
+				# If we can't get details, include the original form data
+				enhanced_forms.append(form)
+		
+		print(f"Successfully enhanced {len(enhanced_forms)} idea forms with detailed information")
+		return enhanced_forms
+	
+	def get_enhanced_ideas(self, page: int = 1, page_size: int = 200, 
+						  filters: Optional[Dict[str, Any]] = None, get_all: bool = False,
+						  location_status: str = "not_archived") -> List[Dict[str, Any]]:
+		"""
+		Get ideas with enhanced details by fetching individual idea information
+		
+		Args:
+			page: Page number
+			page_size: Number of items per page
+			filters: Additional filters to apply
+			get_all: Whether to fetch all pages
+			location_status: Filter by location status ("all", "visible", "hidden", "archived", "not_archived")
+		
+		Returns:
+			List of enhanced idea dictionaries with detailed information
+		"""
+		# Set up location_status filter
+		if filters is None:
+			filters = {}
+		
+		# Handle location_status filtering
+		if location_status in ["not_archived", "archived", "visible", "hidden"]:
+			# These will require checking the detailed data since we need to filter precisely
+			print(f"Filtering for location_status: {location_status} (will be applied after fetching detailed data)")
+		elif location_status != "all":
+			# Apply the filter directly to the API call for any other values
+			filters["location_status"] = location_status
+			print(f"Filtering for location_status: {location_status}")
+		else:
+			print("Getting all ideas regardless of location_status")
+		
+		print("Fetching ideas list...")
+		ideas_response = self.get_ideas(page, page_size, filters, get_all)
+		
+		if 'results' not in ideas_response:
+			print("No results found in ideas response")
+			return []
+		
+		ideas = ideas_response['results']
+		enhanced_ideas = []
+		
+		print(f"Fetching detailed information for {len(ideas)} ideas...")
+		
+		for i, idea in enumerate(ideas, 1):
+			if 'id' not in idea:
+				print(f"Warning: Idea {i} has no ID, skipping detailed fetch")
+				enhanced_ideas.append(idea)
+				continue
+				
+			try:
+				idea_id = idea['id']
+				print(f"Processing idea {i}/{len(ideas)}: ID {idea_id}")
+				
+				# Get detailed information for this idea
+				detailed_idea = self.get_idea_details(idea_id)
+				
+				# Merge the detailed information with the original idea data
+				enhanced_idea = {**idea, **detailed_idea}
+				
+				# Apply location_status filtering based on the detailed data
+				idea_location_status = enhanced_idea.get('location_status', '')
+				
+				# Filter based on location_status parameter
+				if location_status == "not_archived":
+					if idea_location_status == 'archived':
+						print(f"Skipping archived idea ID {idea_id} (status: {idea_location_status})")
+						continue
+				elif location_status == "archived":
+					if idea_location_status != 'archived':
+						print(f"Skipping non-archived idea ID {idea_id} (status: {idea_location_status})")
+						continue
+				elif location_status == "visible":
+					if idea_location_status != 'visible':
+						print(f"Skipping non-visible idea ID {idea_id} (status: {idea_location_status})")
+						continue
+				elif location_status == "hidden":
+					if idea_location_status != 'hidden':
+						print(f"Skipping non-hidden idea ID {idea_id} (status: {idea_location_status})")
+						continue
+				# For location_status == "all", we don't filter anything
+				
+				enhanced_ideas.append(enhanced_idea)
+				
+			except Exception as e:
+				print(f"Warning: Failed to fetch details for idea ID {idea.get('id', 'unknown')}: {e}")
+				# If we can't get details, include the original idea data only if we're not filtering 
+				# or if we can determine the status from the basic data
+				if location_status == "all":
+					enhanced_ideas.append(idea)
+				elif location_status == "not_archived" and idea.get('location_status') != 'archived':
+					enhanced_ideas.append(idea)
+				elif location_status in ["archived", "visible", "hidden"] and idea.get('location_status') == location_status:
+					enhanced_ideas.append(idea)
+				# Otherwise skip this idea since we can't verify its status
+		
+		print(f"Successfully enhanced {len(enhanced_ideas)} ideas with detailed information")
+		return enhanced_ideas
 
 
 class DataExporter:
@@ -307,6 +467,34 @@ class DataExporter:
 			processed_idea[team_name] = 1 if team_id in team_ids else 0
 			
 		return processed_idea
+	
+	@staticmethod
+	def add_custom_dropdown_columns(idea: Dict[str, Any], field_labels: set) -> Dict[str, Any]:
+		"""
+		Add custom dropdown field columns to a single idea
+		
+		Args:
+			idea: Original idea dictionary
+			field_labels: Set of all possible custom dropdown field labels
+			
+		Returns:
+			Modified idea dictionary with custom dropdown field columns
+		"""
+		# Use the input idea (which may already have other custom fields added)
+		processed_idea = idea
+		
+		# Initialize all custom dropdown field columns with empty strings
+		for label in field_labels:
+			processed_idea[f"Custom_Dropdown: {label}"] = ""
+			
+		# Process custom dropdown fields from detailed API response
+		custom_dropdown_fields = idea.get('custom_dropdown_fields', [])
+		if isinstance(custom_dropdown_fields, list):
+			for field in custom_dropdown_fields:
+				if isinstance(field, dict) and 'label' in field and 'value' in field:
+					processed_idea[f"Custom_Dropdown: {field['label']}"] = field['value']
+				
+		return processed_idea
 		
 	@staticmethod
 	def process_ideas(ideas_data: List[Dict[str, Any]], team_mapping: Dict[int, str]) -> List[Dict[str, Any]]:
@@ -320,33 +508,105 @@ class DataExporter:
 		Returns:
 			List of processed idea dictionaries with added columns
 		"""
-		# First pass: collect all unique custom field labels
-		all_field_labels = set()
-		print("Collecting unique custom text field labels...")
+		# First pass: collect all unique custom field labels for both text and dropdown fields
+		all_text_field_labels = set()
+		all_dropdown_field_labels = set()
+		print("Collecting unique custom field labels...")
 		
 		for idea in ideas_data:
-			custom_fields = DataExporter.parse_custom_text_fields(idea.get('custom_text_fields'))
-			for field in custom_fields:
+			# Process custom text fields
+			custom_text_fields = DataExporter.parse_custom_text_fields(idea.get('custom_text_fields'))
+			for field in custom_text_fields:
 				if isinstance(field, dict) and 'label' in field:
-					all_field_labels.add(field['label'])
+					all_text_field_labels.add(field['label'])
+			
+			# Process custom dropdown fields (from detailed API response)
+			custom_dropdown_fields = idea.get('custom_dropdown_fields', [])
+			if isinstance(custom_dropdown_fields, list):
+				for field in custom_dropdown_fields:
+					if isinstance(field, dict) and 'label' in field:
+						all_dropdown_field_labels.add(field['label'])
 		
-		print(f"Found {len(all_field_labels)} unique custom text field labels: {all_field_labels}")
+		print(f"Found {len(all_text_field_labels)} unique custom text field labels: {all_text_field_labels}")
+		print(f"Found {len(all_dropdown_field_labels)} unique custom dropdown field labels: {all_dropdown_field_labels}")
 		
-		# Second pass: add both custom field and team columns
+		# Second pass: add custom field columns and team columns
 		processed_ideas = []
 		print("Processing ideas data (adding custom fields and team columns)...")
 		
 		for idea in ideas_data:
-			# First add custom field columns
-			processed_idea = DataExporter.add_custom_field_columns(idea, all_field_labels)
+			# Start with the original idea data
+			processed_idea = idea.copy()
 			
-			# Then add team columns (modifies the same dictionary)
+			# Add custom text field columns
+			processed_idea = DataExporter.add_custom_field_columns(processed_idea, all_text_field_labels)
+			
+			# Add custom dropdown field columns
+			processed_idea = DataExporter.add_custom_dropdown_columns(processed_idea, all_dropdown_field_labels)
+			
+			# Add team columns
 			processed_idea = DataExporter.add_team_columns(processed_idea, team_mapping)
 			
 			# Add to the result list
 			processed_ideas.append(processed_idea)
 		
 		return processed_ideas
+	
+	@staticmethod
+	def process_idea_forms(forms_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+		"""
+		Process idea forms data to flatten custom fields for better Excel export
+		
+		Args:
+			forms_data: List of enhanced idea form dictionaries
+			
+		Returns:
+			List of processed idea form dictionaries with flattened custom fields
+		"""
+		processed_forms = []
+		print("Processing idea forms data (flattening custom fields)...")
+		
+		for form in forms_data:
+			# Start with the original form data
+			processed_form = form.copy()
+			
+			# Process custom text fields
+			if 'custom_text_fields' in form and form['custom_text_fields']:
+				custom_text_fields = form['custom_text_fields']
+				if isinstance(custom_text_fields, list):
+					for i, field in enumerate(custom_text_fields):
+						if isinstance(field, dict) and 'label' in field:
+							processed_form[f"Custom_Text_Field_{i+1}_Label"] = field['label']
+							# Include other properties if they exist
+							for key, value in field.items():
+								if key != 'label':
+									processed_form[f"Custom_Text_Field_{i+1}_{key}"] = value
+				
+				# Remove the original nested field to avoid confusion
+				processed_form.pop('custom_text_fields', None)
+			
+			# Process custom dropdown fields
+			if 'custom_dropdown_fields' in form and form['custom_dropdown_fields']:
+				custom_dropdown_fields = form['custom_dropdown_fields']
+				if isinstance(custom_dropdown_fields, list):
+					for i, field in enumerate(custom_dropdown_fields):
+						if isinstance(field, dict) and 'label' in field:
+							processed_form[f"Custom_Dropdown_Field_{i+1}_Label"] = field['label']
+							# Handle allowed_values as a comma-separated string
+							if 'allowed_values' in field and isinstance(field['allowed_values'], list):
+								processed_form[f"Custom_Dropdown_Field_{i+1}_Allowed_Values"] = ', '.join(field['allowed_values'])
+							# Include other properties if they exist
+							for key, value in field.items():
+								if key not in ['label', 'allowed_values']:
+									processed_form[f"Custom_Dropdown_Field_{i+1}_{key}"] = value
+				
+				# Remove the original nested field to avoid confusion
+				processed_form.pop('custom_dropdown_fields', None)
+			
+			processed_forms.append(processed_form)
+		
+		print(f"Processed {len(processed_forms)} idea forms with flattened custom fields")
+		return processed_forms
 
 
 def parse_arguments():
@@ -354,8 +614,8 @@ def parse_arguments():
 	parser = argparse.ArgumentParser(description='ProductPlan API Client')
 	
 	parser.add_argument('--endpoint', default='ideas', 
-						choices=['ideas', 'teams'], 
-						help='API endpoint to query (default: ideas, available: teams)')
+						choices=['ideas', 'teams', 'idea-forms'], 
+						help='API endpoint to query (default: ideas, available: teams, idea-forms)')
 	
 	parser.add_argument('--token-file', default='token.txt',
 					   help='File containing the API token (default: token.txt)')
@@ -374,6 +634,10 @@ def parse_arguments():
 	
 	parser.add_argument('--all-pages', action='store_true',
 					   help='Fetch all pages of results')
+	
+	parser.add_argument('--location-status', default='not_archived',
+					   choices=['all', 'visible', 'hidden', 'archived', 'not_archived'],
+					   help='Filter ideas by location status (default: not_archived, available: all, visible, hidden, archived, not_archived)')
 	
 	return parser.parse_args()
 
@@ -413,21 +677,22 @@ def main():
 	
 	# Call appropriate API endpoint
 	if args.endpoint == 'ideas':
-		print(f"Fetching ideas from ProductPlan API")
-		response = api.get_ideas(args.page, args.page_size, filters, args.all_pages)
+		print(f"Fetching ideas with detailed information from ProductPlan API")
+		print(f"Location status filter: {args.location_status}")
 		
-		# Process response and export data
-		if 'results' in response:
+		# Get enhanced ideas data (this includes detailed information for each idea)
+		enhanced_ideas = api.get_enhanced_ideas(args.page, args.page_size, filters, args.all_pages, args.location_status)
+		
+		if enhanced_ideas:
 			# Get team mapping first (requires API call)
 			team_mapping = api.get_team_id_to_name_mapping()
 			
-			# Process both custom text fields and team columns in a single pass
-			processed_data = DataExporter.process_ideas(response['results'], team_mapping)
+			# Process the enhanced ideas data (includes custom text fields, dropdown fields, and team columns)
+			processed_data = DataExporter.process_ideas(enhanced_ideas, team_mapping)
 			
 			DataExporter.to_excel(processed_data, args.output)
 		else:
-			print("Error: Unexpected API response format")
-			print(f"Response keys: {response.keys()}")
+			print("Error: No ideas data received")
 			sys.exit(1)
 			
 	elif args.endpoint == 'teams':
@@ -440,6 +705,20 @@ def main():
 		else:
 			print("Error: Unexpected API response format")
 			print(f"Response keys: {response.keys()}")
+			sys.exit(1)
+			
+	elif args.endpoint == 'idea-forms':
+		print(f"Fetching idea forms with detailed information from ProductPlan API")
+		
+		# Get enhanced idea forms data (this includes detailed information for each form)
+		enhanced_forms = api.get_enhanced_idea_forms(args.page, args.page_size, filters, args.all_pages)
+		
+		if enhanced_forms:
+			# Process the enhanced forms data (flatten custom fields for Excel export)
+			processed_forms = DataExporter.process_idea_forms(enhanced_forms)
+			DataExporter.to_excel(processed_forms, args.output)
+		else:
+			print("Error: No idea forms data received")
 			sys.exit(1)
 	else:
 		print(f"Error: Endpoint '{args.endpoint}' not implemented")

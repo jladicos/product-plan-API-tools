@@ -7,11 +7,15 @@ A flexible Python script to fetch data from the ProductPlan API and export it to
 - Fetch ideas from ProductPlan API
 - Fetch teams from ProductPlan API
 - Fetch idea forms from ProductPlan API with detailed information (includes custom fields, instructions, etc.)
-- Export data to Excel
+- **NEW: Fetch objectives and key results (OKRs) from ProductPlan API**
+- Export data to Excel format
+- **NEW: Export OKR data to Markdown format for documentation and reporting**
 - Filter results using command-line arguments
+- **NEW: Filter objectives by status (active/all)**
 - Pagination support
 - Token-based authentication
 - Automatic team columns on ideas exports (1 if assigned, 0 if not)
+- **NEW: Automatic team name resolution for objectives and key results**
 - Automatic extraction of custom text fields into separate columns
 - Simplified `make` commands for ease of use
 - Docker containerization for easy deployment
@@ -59,7 +63,13 @@ make teams
 # Fetch all idea forms with detailed information
 make idea-forms
 
-# Fetch all data types (saved as ideas.xlsx, teams.xlsx, and idea-forms.xlsx)
+# Fetch objectives and key results (OKRs) - Excel format
+make okrs
+
+# Fetch objectives and key results (OKRs) - Markdown format
+make okrs output-format=markdown
+
+# Fetch all data types (saved as ideas.xlsx, teams.xlsx, idea-forms.xlsx, and okrs.xlsx)
 make all
 
 # See all available commands and options
@@ -73,6 +83,10 @@ make help
 make ideas OUTPUT=my_ideas.xlsx
 make teams OUTPUT=my_teams.xlsx
 make idea-forms OUTPUT=my_forms.xlsx
+make okrs OUTPUT=my_okrs.xlsx
+
+# Custom filename for markdown format
+make okrs output-format=markdown output=my_okrs.md
 ```
 
 ### Filtering Results
@@ -85,6 +99,10 @@ make ideas FILTERS="name:Feature Request"
 
 # Multiple filters
 make ideas FILTERS="name:Feature Request channel:Sales"
+
+# Filter objectives by status
+make okrs OBJECTIVE_STATUS=all  # Include inactive objectives
+make okrs OBJECTIVE_STATUS=active  # Active objectives only (default)
 ```
 
 ### Pagination Options
@@ -103,6 +121,9 @@ For maximum flexibility, use the `custom` command:
 
 ```bash
 make custom ENDPOINT=idea-forms OUTPUT=custom.xlsx PAGE_SIZE=500 FILTERS="name:New Feature"
+
+# Custom OKR export with markdown format
+make custom ENDPOINT=okrs OUTPUT_FORMAT=markdown OUTPUT=quarterly_okrs.md OBJECTIVE_STATUS=all
 ```
 
 ## Usage with Direct Docker Commands
@@ -121,6 +142,12 @@ docker run --rm -v $(pwd):/app productplan-api --endpoint teams --all-pages
 
 # Fetch all idea forms with detailed information
 docker run --rm -v $(pwd):/app productplan-api --endpoint idea-forms --all-pages
+
+# Fetch all active objectives and key results (Excel format)
+docker run --rm -v $(pwd):/app productplan-api --endpoint okrs --all-pages
+
+# Fetch all objectives and key results (Markdown format)
+docker run --rm -v $(pwd):/app productplan-api --endpoint okrs --all-pages --output-format markdown --output okrs.md
 
 # Custom filters and options
 docker run --rm -v $(pwd):/app productplan-api \
@@ -144,16 +171,20 @@ docker run --rm -v $(pwd):/app productplan-api \
 | `TOKEN_FILE` | File containing the API token | token.txt |
 | `ALL_PAGES` | Fetch all pages | true |
 | `FILTERS` | Space-separated key:value pairs | (none) |
+| `OBJECTIVE_STATUS` | Filter objectives by status | active |
+| `OUTPUT_FORMAT` | Output format for OKRs | excel |
 
 ### Docker Command Options
 
-- `--endpoint`: API endpoint to query (available: 'ideas', 'teams', 'idea-forms')
+- `--endpoint`: API endpoint to query (available: 'ideas', 'teams', 'idea-forms', 'okrs')
 - `--token-file`: File containing the API token (default: token.txt)
 - `--page`: Page number (default: 1)
 - `--page-size`: Number of items per page (default: 200, max: 500)
 - `--filter`: Filter results (can be used multiple times with KEY VALUE pairs)
 - `--output`: Output filename (default: output.xlsx)
 - `--all-pages`: Fetch all pages of results automatically (ignores the --page parameter)
+- `--objective-status`: Filter objectives by status (available: 'active', 'all'; default: active)
+- `--output-format`: Output format for OKRs (available: 'excel', 'markdown'; default: excel)
 
 ## Filtering
 
@@ -181,6 +212,16 @@ docker run --rm -v $(pwd):/app productplan-api \
   - Custom dropdown fields with labels and allowed values
   - All custom fields are flattened into separate Excel columns for easy analysis
 
+### OKRs (Objectives and Key Results) Endpoint
+
+- **Status Filtering**: Use `OBJECTIVE_STATUS=active` (default) to get only active objectives, or `OBJECTIVE_STATUS=all` to include all objectives
+- **Output Formats**: Choose between Excel (`OUTPUT_FORMAT=excel`) or Markdown (`OUTPUT_FORMAT=markdown`) output
+- **Team Resolution**: Automatically resolves team IDs to team names for both objectives and key results
+- **Data Structure**: 
+  - Excel format: Flattened rows with one row per key result (or one row per objective if no key results)
+  - Markdown format: Structured document with H2 objective headings, H3 team and key results sections
+- **Column Order (Excel)**: status, team_name, objective_name, objective_description, key_result_name, key_result_target, key_result_current, key_result_progress, objective_id, key_result_id
+
 ## Team Columns on Ideas Data
 
 When fetching ideas data, columns for each team are automatically added. For each idea, a column will be added for each team with a value of 1 if the team is assigned to the idea, and 0 if not.
@@ -203,6 +244,40 @@ The exported Excel file will include two additional columns:
 - "Custom: Success criteria" with value "Reduced login failures by 50%"
 
 This happens automatically for any number of custom text fields present in your data, with no configuration required.
+
+## Markdown Export for OKRs
+
+When using `OUTPUT_FORMAT=markdown`, the tool generates a structured Markdown document perfect for documentation, reports, and team reviews:
+
+### Markdown Structure
+
+```markdown
+# Objectives and Key Results
+
+## Objective Name
+Brief description of the objective.
+
+### Team
+Team Name
+
+### Key Results
+- Key result description (target: value) - Current: X | Progress: Y%
+- Another key result (target: 100%) - Current: 75% | Progress: 75%
+
+## Another Objective
+
+### Key Results
+No key results
+```
+
+### Key Features
+
+- **Clean Headers**: Each objective gets an H2 heading without team names in parentheses
+- **Team Sections**: Dedicated H3 "Team" section for clear team attribution
+- **Target Format**: Targets appear in parentheses for easy scanning: `(target: 25%)`
+- **Progress Details**: Current values and progress shown after targets
+- **No Key Results Handling**: Clear "No key results" message when appropriate
+- **Professional Format**: Perfect for stakeholder reports, team documentation, and quarterly reviews
 
 ## Troubleshooting
 

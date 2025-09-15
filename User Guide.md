@@ -67,7 +67,9 @@ If you encounter issues running the setup script, try the following:
 | `make ideas` | Get all ideas with team columns |
 | `make teams` | Get all teams |
 | `make idea-forms` | Get all idea forms with detailed information |
-| `make all` | Get ideas, teams, and idea forms |
+| `make okrs` | Get objectives and key results (OKRs) - Excel format |
+| `make okrs output-format=markdown` | Get OKRs in Markdown format |
+| `make all` | Get ideas, teams, idea forms, and OKRs |
 | `make help` | See all available commands and options |
 
 ## Working with Ideas
@@ -137,6 +139,91 @@ When fetching idea forms, the tool automatically:
 
 This provides much richer data than the basic form list endpoint.
 
+## Working with OKRs (Objectives and Key Results)
+
+The OKR endpoint provides comprehensive data about your organization's objectives and key results with enhanced functionality:
+
+```bash
+# Get all active objectives and key results (Excel format)
+make okrs
+
+# Get all objectives (including inactive) in Excel format
+make okrs OBJECTIVE_STATUS=all
+
+# Get active OKRs in Markdown format for documentation
+make okrs output-format=markdown
+
+# Specify a custom output filename
+make okrs OUTPUT=quarterly_okrs.xlsx
+
+# Custom filename for markdown format
+make okrs output-format=markdown OUTPUT=team_okrs.md
+
+# Get all objectives (active and inactive) in markdown format
+make okrs output-format=markdown OBJECTIVE_STATUS=all OUTPUT=all_okrs.md
+```
+
+### OKR Data Structure
+
+The OKR endpoint automatically:
+- Fetches all objectives from your ProductPlan account
+- Retrieves detailed key results for each objective
+- Resolves team IDs to team names for both objectives and key results
+- Filters to active objectives by default (use `OBJECTIVE_STATUS=all` to include inactive)
+- Exports in Excel or Markdown format depending on your preference
+
+### Excel Format Features
+
+When using Excel format (default), the tool provides:
+- **Flattened Structure**: One row per key result, or one row per objective if no key results
+- **Column Order**: status, team_name, objective_name, objective_description, key_result_name, key_result_target, key_result_current, key_result_progress, objective_id, key_result_id
+- **Team Resolution**: Automatic conversion of team IDs to readable team names
+- **Progress Tracking**: Clear visibility of current values vs targets
+
+### Markdown Format Features
+
+When using `output-format=markdown`, the tool generates a structured document perfect for:
+- **Team Reports**: Quarterly and annual objective reviews
+- **Stakeholder Updates**: Executive summaries and board presentations
+- **Documentation**: Knowledge base and planning documents
+
+#### Markdown Structure Example
+
+```markdown
+# Objectives and Key Results
+
+## Improve Customer Satisfaction
+Enhance overall customer experience and reduce support tickets.
+
+### Team
+Customer Success Team
+
+### Key Results
+- Reduce average response time (target: 2 hours) - Current: 3.5 hours | Progress: 45%
+- Increase NPS score (target: 50) - Current: 42 | Progress: 84%
+- Implement self-service portal (target: 100%) - Current: 75% | Progress: 75%
+
+## Launch New Product Feature
+
+### Team
+Product Development Team
+
+### Key Results
+No key results
+```
+
+### OKR Filtering Options
+
+```bash
+# Status filtering
+make okrs OBJECTIVE_STATUS=active    # Default: only active objectives
+make okrs OBJECTIVE_STATUS=all       # Include inactive objectives
+
+# Output format options
+make okrs output-format=excel        # Default: Excel spreadsheet
+make okrs output-format=markdown     # Structured markdown document
+```
+
 ## Advanced Usage
 
 ### Custom Commands
@@ -145,6 +232,9 @@ For maximum flexibility, use the `custom` command:
 
 ```bash
 make custom ENDPOINT=idea-forms OUTPUT=custom.xlsx PAGE_SIZE=500
+
+# Custom OKR export with specific settings
+make custom ENDPOINT=okrs OUTPUT_FORMAT=markdown OUTPUT=quarterly_okrs.md OBJECTIVE_STATUS=all
 ```
 
 ### All Available Options
@@ -157,6 +247,8 @@ make custom ENDPOINT=idea-forms OUTPUT=custom.xlsx PAGE_SIZE=500
 | `TOKEN_FILE` | File containing the API token | token.txt |
 | `ALL_PAGES` | Fetch all pages | true |
 | `LOCATION_STATUS` | Filter ideas by location status | not_archived |
+| `OBJECTIVE_STATUS` | Filter objectives by status | active |
+| `OUTPUT_FORMAT` | Output format for OKRs | excel |
 | `FILTERS` | Space-separated key:value pairs | (none) |
 
 ## Using Direct Docker Commands
@@ -172,6 +264,15 @@ docker run --rm -v $(pwd):/app productplan-api --endpoint teams --all-pages --ou
 
 # Idea forms endpoint with detailed information
 docker run --rm -v $(pwd):/app productplan-api --endpoint idea-forms --all-pages --output output.xlsx
+
+# OKRs endpoint (Excel format)
+docker run --rm -v $(pwd):/app productplan-api --endpoint okrs --all-pages --output okrs.xlsx
+
+# OKRs endpoint (Markdown format)
+docker run --rm -v $(pwd):/app productplan-api --endpoint okrs --all-pages --output-format markdown --output okrs.md
+
+# OKRs with all objectives (including inactive)
+docker run --rm -v $(pwd):/app productplan-api --endpoint okrs --all-pages --objective-status all --output all_okrs.xlsx
 ```
 
 ## Troubleshooting

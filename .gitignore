@@ -3,6 +3,7 @@ token.txt
 
 # Ignore output files
 *.xlsx
+okrs.md
 
 # Python
 __pycache__/
@@ -15,4 +16,4 @@ venv/
 # OS specific
 .DS_Store
 Thumbs.db
-okrs.md
+

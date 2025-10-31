@@ -543,6 +543,109 @@ class ProductPlanAPI:
 		print(f"Successfully processed objectives and key results. Total rows: {len(okr_rows)}")
 		return okr_rows
 
+	def get_objective_mapping_data(self, page: int = 1, page_size: int = 200,
+								  filters: Optional[Dict[str, Any]] = None, get_all: bool = False,
+								  status_filter: str = "active") -> List[Dict[str, Any]]:
+		"""
+		Get objective mapping data showing relationships between company and team objectives
+
+		This method creates a flattened mapping view where each row represents a potential
+		relationship between a company-level objective (no team_ids) and a team-level objective
+		(with team_ids). Since ProductPlan's API doesn't expose parent-child relationships,
+		this creates a Cartesian product for manual relationship configuration.
+
+		Column structure:
+		- company_objective_name: Name of the company-level objective
+		- team_objective_name: Name of the team-level objective
+		- team_name: Resolved team name from team_ids
+		- company_objective_id: ID of the company-level objective
+		- team_objective_id: ID of the team-level objective
+
+		Args:
+			page: Page number to start fetching from (default: 1)
+			page_size: Number of objectives per page (default: 200, max: 500)
+			filters: Additional API filters as key-value pairs
+			get_all: If True, fetches all pages of objectives (default: False)
+			status_filter: Objective status filter - "active" (default) or "all"
+
+		Returns:
+			List of dictionaries where each dictionary represents one potential relationship row
+		"""
+		# Apply status filtering if needed
+		if filters is None:
+			filters = {}
+
+		if status_filter == "active":
+			filters["location_status"] = "active"
+			print("Filtering for active objectives only")
+		elif status_filter == "all":
+			print("Getting all objectives regardless of status")
+
+		print(f"Applying filters: {filters}")
+
+		print("Fetching objectives for mapping...")
+		objectives_response = self.get_objectives(page, page_size, filters, get_all)
+
+		if 'results' not in objectives_response:
+			print("No results found in objectives response")
+			return []
+
+		objectives = objectives_response['results']
+
+		# If we're filtering for active objectives, also filter the results after fetching
+		if status_filter == "active":
+			original_count = len(objectives)
+			objectives = [obj for obj in objectives if
+				obj.get('location_status') == 'active' or
+				(obj.get('location_status') != 'archived' and
+				 obj.get('location_status') != 'inactive')]
+			print(f"Filtered objectives from {original_count} to {len(objectives)} active objectives")
+
+		# Get team mapping for team names
+		team_mapping = self.get_team_id_to_name_mapping()
+		print(f"Team mapping loaded: {len(team_mapping)} teams")
+
+		# Separate company-level and team-level objectives
+		company_objectives = []
+		team_objectives = []
+
+		for obj in objectives:
+			if not obj.get('team_ids') or len(obj.get('team_ids', [])) == 0:
+				company_objectives.append(obj)
+			else:
+				team_objectives.append(obj)
+
+		print(f"Found {len(company_objectives)} company-level objectives")
+		print(f"Found {len(team_objectives)} team-level objectives")
+
+		# Create mapping rows - Cartesian product of company objectives x team objectives
+		mapping_rows = []
+
+		for company_obj in company_objectives:
+			for team_obj in team_objectives:
+				# Get team names for the team objective
+				team_ids = team_obj.get('team_ids', [])
+				team_names = []
+
+				if team_ids:
+					for team_id in team_ids:
+						if team_id in team_mapping:
+							team_names.append(team_mapping[team_id])
+
+				team_name = ', '.join(team_names) if team_names else 'Unknown Team'
+
+				row = {
+					'company_objective_name': company_obj.get('name', ''),
+					'team_objective_name': team_obj.get('name', ''),
+					'team_name': team_name,
+					'company_objective_id': company_obj.get('id', ''),
+					'team_objective_id': team_obj.get('id', '')
+				}
+				mapping_rows.append(row)
+
+		print(f"Generated {len(mapping_rows)} mapping rows ({len(company_objectives)} company × {len(team_objectives)} team objectives)")
+		return mapping_rows
+
 	def get_enhanced_ideas(self, page: int = 1, page_size: int = 200, 
 						  filters: Optional[Dict[str, Any]] = None, get_all: bool = False,
 						  location_status: str = "not_archived") -> List[Dict[str, Any]]:
@@ -651,9 +754,15 @@ class DataExporter:
 		if not data:
 			print("Warning: No data to export")
 			return
-			
+
 		print(f"Exporting {len(data)} records to {filename}")
 		try:
+			# Create parent directory if it doesn't exist
+			output_dir = os.path.dirname(filename)
+			if output_dir:  # Only create if there's a directory component
+				os.makedirs(output_dir, exist_ok=True)
+				print(f"Ensuring output directory exists: {output_dir}")
+
 			df = pd.DataFrame(data)
 			df.to_excel(filename, index=False)
 			# Get full path to the output file
@@ -789,14 +898,238 @@ class DataExporter:
 		
 		# Write to file
 		try:
+			# Create parent directory if it doesn't exist
+			output_dir = os.path.dirname(filename)
+			if output_dir:  # Only create if there's a directory component
+				os.makedirs(output_dir, exist_ok=True)
+				print(f"Ensuring output directory exists: {output_dir}")
+
 			with open(filename, 'w', encoding='utf-8') as f:
 				f.write('\n'.join(markdown_lines))
-			
+
 			abs_path = os.path.abspath(filename)
 			print(f"OKR data successfully exported to {abs_path}")
 			print(f"Generated markdown for {len(objectives)} objectives")
 		except Exception as e:
 			print(f"Error exporting to markdown: {e}")
+			raise
+
+	@staticmethod
+	def to_javascript_miro(objective_data: List[Dict[str, Any]], filename: str,
+						   relationship_config: Optional[Dict[str, List[str]]] = None) -> None:
+		"""
+		Export objective data to JavaScript for Miro board visualization
+
+		This method generates JavaScript code that uses the Miro Web SDK to create
+		objective hierarchy visualizations. Company objectives are shown as dark boxes
+		at the top, with team objectives below them in yellow team headers + white content boxes.
+
+		Args:
+			objective_data: List of objective mapping dictionaries from get_objective_mapping_data()
+			filename: Output JavaScript filename (e.g., "objectives.js")
+			relationship_config: Optional dict mapping company objective names to lists of team objective names
+								If None, all relationships from the mapping data are used
+
+		Returns:
+			None (writes JavaScript file to disk)
+
+		JavaScript structure generated:
+		- Uses Miro Web SDK board.createStickyNote() for boxes
+		- Company objectives: Dark background (#2D3748), white text
+		- Team objectives: Yellow team header (#FED100) + white content box
+		- Automatic layout: Company objectives spaced horizontally, team objectives below each company objective
+		- Responsive positioning based on number of objectives
+
+		Example output creates JavaScript that can be pasted into browser console on Miro board
+		"""
+		if not objective_data:
+			print("Warning: No objective data to export")
+			return
+
+		print(f"Generating Miro JavaScript for objective visualization: {filename}")
+
+		# Organize data by company objectives
+		company_objectives = {}
+		team_objectives_by_company = {}
+
+		# First, collect all unique company and team objectives
+		for row in objective_data:
+			company_name = row.get('company_objective_name', '')
+			company_id = row.get('company_objective_id', '')
+			team_name = row.get('team_name', '')
+			team_obj_name = row.get('team_objective_name', '')
+			team_obj_id = row.get('team_objective_id', '')
+
+			if company_name and company_id:
+				company_objectives[company_name] = company_id
+
+				if company_name not in team_objectives_by_company:
+					team_objectives_by_company[company_name] = []
+
+				# Only add if we have a relationship (or if no config is provided, add all)
+				if relationship_config is None or company_name in relationship_config:
+					if relationship_config is None or team_obj_name in relationship_config[company_name]:
+						team_objectives_by_company[company_name].append({
+							'name': team_obj_name,
+							'team': team_name,
+							'id': team_obj_id
+						})
+
+		# Remove duplicates from team objectives
+		for company_name in team_objectives_by_company:
+			seen = set()
+			unique_teams = []
+			for team_obj in team_objectives_by_company[company_name]:
+				key = (team_obj['name'], team_obj['team'])
+				if key not in seen:
+					seen.add(key)
+					unique_teams.append(team_obj)
+			team_objectives_by_company[company_name] = unique_teams
+
+		# Define color scheme for company objectives
+		company_colors = [
+			{'fill': '#FF6B6B', 'stroke': '#E55252'},  # Red
+			{'fill': '#4ECDC4', 'stroke': '#45B7B8'},  # Teal
+			{'fill': '#45B7D1', 'stroke': '#3D99C6'},  # Blue
+			{'fill': '#96CEB4', 'stroke': '#85BFA3'},  # Green
+			{'fill': '#FECA57', 'stroke': '#FDB82F'},  # Yellow
+			{'fill': '#A29BFE', 'stroke': '#8A84FF'},  # Purple
+		]
+
+		# Generate JavaScript code
+		js_lines = []
+		js_lines.append("// ProductPlan Objectives Visualization for Miro")
+		js_lines.append("// Generated automatically - paste into browser console on Miro board")
+		js_lines.append("// Uses shapes, tables, and connectors for professional visualization")
+		js_lines.append("")
+		js_lines.append("(async function() {")
+		js_lines.append("  console.log('Creating ProductPlan objectives visualization with shapes and connectors...');")
+		js_lines.append("")
+		js_lines.append("  const shapes = [];")
+		js_lines.append("  const connectors = [];")
+		js_lines.append("  ")
+		js_lines.append("  // Layout configuration")
+		js_lines.append("  const startX = 200;")
+		js_lines.append("  const companyY = 100;")
+		js_lines.append("  const teamStartY = 400;")
+		js_lines.append("  const companySpacing = 800;")
+		js_lines.append("  const teamSpacing = 350;")
+		js_lines.append("  const companyWidth = 400;")
+		js_lines.append("  const companyHeight = 120;")
+		js_lines.append("  const teamWidth = 300;")
+		js_lines.append("  const teamHeight = 100;")
+		js_lines.append("")
+
+		for i, (company_name, company_id) in enumerate(company_objectives.items()):
+			team_objs = team_objectives_by_company.get(company_name, [])
+			color = company_colors[i % len(company_colors)]
+
+			# Calculate positions for this company and its teams
+			company_x = f"startX + {i * 800}"
+
+			js_lines.append(f"  // ===== Company Objective {i + 1}: {company_name[:50]}... =====")
+			js_lines.append("")
+
+			# Create company objective shape
+			escaped_company_name = company_name.replace('`', '\\`').replace('${', '\\${')
+			js_lines.append("  // Company Objective Shape")
+			js_lines.append("  const companyShape{} = await miro.board.createShape({{".format(i))
+			js_lines.append(f"    content: `<p style='font-size:16px; font-weight:bold; text-align:center; margin:8px;'>{escaped_company_name}</p><p style='font-size:12px; text-align:center; color:#666; margin:4px;'>Company Objective</p>`,")
+			js_lines.append(f"    shape: 'rectangle',")
+			js_lines.append(f"    x: {company_x},")
+			js_lines.append(f"    y: companyY,")
+			js_lines.append(f"    width: companyWidth,")
+			js_lines.append(f"    height: companyHeight,")
+			js_lines.append("    style: {")
+			js_lines.append(f"      fillColor: '{color['fill']}',")
+			js_lines.append(f"      borderColor: '{color['stroke']}',")
+			js_lines.append("      borderWidth: 3,")
+			js_lines.append("      borderStyle: 'normal',")
+			js_lines.append("      borderOpacity: 1.0,")
+			js_lines.append("      fillOpacity: 0.9,")
+			js_lines.append("      fontFamily: 'arial',")
+			js_lines.append("      color: '#FFFFFF',")
+			js_lines.append("      textAlign: 'center'")
+			js_lines.append("    }")
+			js_lines.append("  });")
+			js_lines.append(f"  shapes.push(companyShape{i});")
+			js_lines.append("")
+
+			# Create team objectives for this company
+			if team_objs:
+				# Calculate starting position for team objectives (center them under company objective)
+				total_team_width = len(team_objs) * 300 + (len(team_objs) - 1) * 50  # teams + spacing
+				team_start_x = f"{company_x} - {total_team_width // 2} + {300 // 2}"  # Center align
+
+				for j, team_obj in enumerate(team_objs):
+					team_x = f"{team_start_x} + {j * 350}"
+					escaped_team_name = team_obj['team'].replace('`', '\\`').replace('${', '\\${')
+					escaped_team_objective = team_obj['name'].replace('`', '\\`').replace('${', '\\${')
+
+					js_lines.append(f"  // Team Objective {j + 1} for Company {i + 1}")
+					js_lines.append("  const teamShape{}_{} = await miro.board.createShape({{".format(i, j))
+					js_lines.append(f"    content: `<p style='font-size:14px; font-weight:bold; text-align:center; margin:4px; background-color:{color['fill']}; color:white; padding:4px; border-radius:3px;'>{escaped_team_name}</p><p style='font-size:11px; text-align:left; margin:6px; line-height:1.3;'>{escaped_team_objective}</p>`,")
+					js_lines.append(f"    shape: 'rectangle',")
+					js_lines.append(f"    x: {team_x},")
+					js_lines.append(f"    y: teamStartY,")
+					js_lines.append(f"    width: teamWidth,")
+					js_lines.append(f"    height: teamHeight,")
+					js_lines.append("    style: {")
+					js_lines.append("      fillColor: '#FFFFFF',")
+					js_lines.append(f"      borderColor: '{color['stroke']}',")
+					js_lines.append("      borderWidth: 2,")
+					js_lines.append("      borderStyle: 'normal',")
+					js_lines.append("      borderOpacity: 1.0,")
+					js_lines.append("      fillOpacity: 1.0,")
+					js_lines.append("      fontFamily: 'arial',")
+					js_lines.append("      color: '#333333',")
+					js_lines.append("      textAlign: 'left'")
+					js_lines.append("    }")
+					js_lines.append("  });")
+					js_lines.append(f"  shapes.push(teamShape{i}_{j});")
+					js_lines.append("")
+
+					# Create connector line from company to team objective
+					js_lines.append(f"  // Connector from Company {i + 1} to Team {j + 1}")
+					js_lines.append("  const connector{}_{} = await miro.board.createConnector({{".format(i, j))
+					js_lines.append(f"    start: {{ item: companyShape{i}.id }},")
+					js_lines.append(f"    end: {{ item: teamShape{i}_{j}.id }},")
+					js_lines.append("    style: {")
+					js_lines.append(f"      strokeColor: '{color['stroke']}',")
+					js_lines.append("      strokeWidth: 2,")
+					js_lines.append("      strokeStyle: 'normal'")
+					js_lines.append("    }")
+					js_lines.append("  });")
+					js_lines.append(f"  connectors.push(connector{i}_{j});")
+					js_lines.append("")
+
+		js_lines.append("  console.log(`Created ${shapes.length} shapes and ${connectors.length} connectors`);")
+		js_lines.append("  console.log('Objectives visualization complete!');")
+		js_lines.append("  ")
+		js_lines.append("  // Zoom to fit all content")
+		js_lines.append("  await miro.board.viewport.zoomTo([...shapes, ...connectors]);")
+		js_lines.append("})();")
+
+		# Write to file
+		try:
+			# Create parent directory if it doesn't exist
+			output_dir = os.path.dirname(filename)
+			if output_dir:  # Only create if there's a directory component
+				os.makedirs(output_dir, exist_ok=True)
+				print(f"Ensuring output directory exists: {output_dir}")
+
+			with open(filename, 'w', encoding='utf-8') as f:
+				f.write('\n'.join(js_lines))
+
+			abs_path = os.path.abspath(filename)
+			print(f"Miro JavaScript successfully exported to {abs_path}")
+			print(f"Generated visualization for {len(company_objectives)} company objectives")
+
+			total_team_objs = sum(len(teams) for teams in team_objectives_by_company.values())
+			print(f"Included {total_team_objs} team objectives")
+			print("Copy and paste the JavaScript into your browser console while on a Miro board")
+		except Exception as e:
+			print(f"Error exporting to JavaScript: {e}")
 			raise
 	
 	@staticmethod
@@ -1056,9 +1389,9 @@ def parse_arguments():
 	"""Parse command line arguments"""
 	parser = argparse.ArgumentParser(description='ProductPlan API Client')
 	
-	parser.add_argument('--endpoint', default='ideas', 
-						choices=['ideas', 'teams', 'idea-forms', 'okrs'], 
-						help='API endpoint to query (default: ideas, available: teams, idea-forms, okrs)')
+	parser.add_argument('--endpoint', default='ideas',
+						choices=['ideas', 'teams', 'idea-forms', 'okrs', 'objectivemap'],
+						help='API endpoint to query (default: ideas, available: teams, idea-forms, okrs, objectivemap)')
 	
 	parser.add_argument('--token-file', default='token.txt',
 					   help='File containing the API token (default: token.txt)')
@@ -1072,8 +1405,8 @@ def parse_arguments():
 	parser.add_argument('--filter', action='append', nargs=2, metavar=('KEY', 'VALUE'),
 					   help='Filter results (can be used multiple times)')
 	
-	parser.add_argument('--output', default='output.xlsx',
-					   help='Output filename (default: output.xlsx)')
+	parser.add_argument('--output', default='files/productplan_data.xlsx',
+					   help='Output filename (default: files/productplan_data.xlsx)')
 	
 	parser.add_argument('--all-pages', action='store_true',
 					   help='Fetch all pages of results')
@@ -1087,8 +1420,8 @@ def parse_arguments():
 					   help='Filter objectives by status (default: active, available: active, all)')
 	
 	parser.add_argument('--output-format', default='excel',
-					   choices=['excel', 'markdown'],
-					   help='Output format for OKRs (default: excel, available: excel, markdown)')
+					   choices=['excel', 'markdown', 'javascript'],
+					   help='Output format (default: excel, available: excel, markdown, javascript)')
 	
 	return parser.parse_args()
 
@@ -1184,8 +1517,8 @@ def main():
 			if args.output_format == 'markdown':
 				# Default to okrs.md if no output specified and format is markdown
 				output_file = args.output
-				if args.output == 'output.xlsx':  # Default Excel filename
-					output_file = 'okrs.md'
+				if args.output == 'files/productplan_data.xlsx':  # Default filename
+					output_file = 'files/okrs.md'
 				elif output_file.endswith('.xlsx'):  # User specified Excel file but wants markdown
 					output_file = output_file.replace('.xlsx', '.md')
 				DataExporter.to_markdown_okr(okr_data, output_file)
@@ -1193,6 +1526,29 @@ def main():
 				DataExporter.to_excel(okr_data, args.output)
 		else:
 			print("Error: No OKR data received")
+			sys.exit(1)
+
+	elif args.endpoint == 'objectivemap':
+		print(f"Fetching objective relationship mapping from ProductPlan API")
+		print(f"Objective status filter: {args.objective_status}")
+		print(f"Output format: {args.output_format}")
+
+		# Get objective mapping data
+		mapping_data = api.get_objective_mapping_data(args.page, args.page_size, filters, args.all_pages, args.objective_status)
+
+		if mapping_data:
+			if args.output_format == 'javascript':
+				# Default to objectives.js if no output specified and format is javascript
+				output_file = args.output
+				if args.output == 'files/productplan_data.xlsx':  # Default filename
+					output_file = 'files/objectives.js'
+				elif output_file.endswith('.xlsx'):  # User specified Excel file but wants javascript
+					output_file = output_file.replace('.xlsx', '.js')
+				DataExporter.to_javascript_miro(mapping_data, output_file)
+			else:  # excel format (default)
+				DataExporter.to_excel(mapping_data, args.output)
+		else:
+			print("Error: No objective mapping data received")
 			sys.exit(1)
 	else:
 		print(f"Error: Endpoint '{args.endpoint}' not implemented")

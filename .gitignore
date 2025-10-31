@@ -1,9 +1,12 @@
 # Ignore API token
 token.txt
 
-# Ignore output files
-*.xlsx
-okrs.md
+# Ignore output files (now in files/ directory)
+# files/ directory has its own .gitignore
+
+# Ignore plan documents (but not executive-summary.md)
+*plan.md
+plans/
 
 # Python
 __pycache__/

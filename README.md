@@ -19,6 +19,17 @@ A flexible Python script to fetch data from the ProductPlan API and export it to
 - Automatic extraction of custom text fields into separate columns
 - Simplified `make` commands for ease of use
 - Docker containerization for easy deployment
+- **Organized file output** - All generated files saved to `files/` directory by default
+
+## File Organization
+
+All generated files are automatically saved to the `files/` directory:
+- `files/ideas.xlsx` - Ideas data with custom fields and team assignments
+- `files/teams.xlsx` - Team information
+- `files/idea-forms.xlsx` - Idea form definitions
+- `files/okrs.xlsx` or `files/okrs.md` - Objectives and key results data
+- The `files/` directory is git-ignored to keep your repository clean
+- The script automatically creates this directory if it doesn't exist
 
 ## Setup
 
@@ -78,15 +89,20 @@ make help
 
 ### Customizing Output Filename
 
+All files are saved to the `files/` directory by default. You can specify custom filenames:
+
 ```bash
-# Set custom output filename
-make ideas OUTPUT=my_ideas.xlsx
-make teams OUTPUT=my_teams.xlsx
-make idea-forms OUTPUT=my_forms.xlsx
-make okrs OUTPUT=my_okrs.xlsx
+# Set custom output filename (still goes to files/ directory by default)
+make ideas OUTPUT=files/my_ideas.xlsx
+make teams OUTPUT=files/my_teams.xlsx
+make idea-forms OUTPUT=files/my_forms.xlsx
+make okrs OUTPUT=files/my_okrs.xlsx
 
 # Custom filename for markdown format
-make okrs output-format=markdown output=my_okrs.md
+make okrs output-format=markdown output=files/my_okrs.md
+
+# Or use a different directory if needed
+make ideas OUTPUT=custom_dir/ideas.xlsx
 ```
 
 ### Filtering Results
@@ -128,36 +144,38 @@ make custom ENDPOINT=okrs OUTPUT_FORMAT=markdown OUTPUT=quarterly_okrs.md OBJECT
 
 ## Usage with Direct Docker Commands
 
-You can still use the direct Docker commands if needed:
+You can still use the direct Docker commands if needed. Remember to include the `files/` directory in output paths:
 
 ```bash
 # Fetch the first page of ideas (includes team columns)
-docker run --rm -v $(pwd):/app productplan-api --endpoint ideas
+docker run --rm -v $(pwd):/app productplan-api --endpoint ideas --output files/ideas.xlsx
 
 # Fetch all ideas
-docker run --rm -v $(pwd):/app productplan-api --endpoint ideas --all-pages
+docker run --rm -v $(pwd):/app productplan-api --endpoint ideas --all-pages --output files/ideas.xlsx
 
 # Fetch all teams
-docker run --rm -v $(pwd):/app productplan-api --endpoint teams --all-pages
+docker run --rm -v $(pwd):/app productplan-api --endpoint teams --all-pages --output files/teams.xlsx
 
 # Fetch all idea forms with detailed information
-docker run --rm -v $(pwd):/app productplan-api --endpoint idea-forms --all-pages
+docker run --rm -v $(pwd):/app productplan-api --endpoint idea-forms --all-pages --output files/idea-forms.xlsx
 
 # Fetch all active objectives and key results (Excel format)
-docker run --rm -v $(pwd):/app productplan-api --endpoint okrs --all-pages
+docker run --rm -v $(pwd):/app productplan-api --endpoint okrs --all-pages --output files/okrs.xlsx
 
 # Fetch all objectives and key results (Markdown format)
-docker run --rm -v $(pwd):/app productplan-api --endpoint okrs --all-pages --output-format markdown --output okrs.md
+docker run --rm -v $(pwd):/app productplan-api --endpoint okrs --all-pages --output-format markdown --output files/okrs.md
 
 # Custom filters and options
 docker run --rm -v $(pwd):/app productplan-api \
   --endpoint idea-forms \
   --page 1 \
   --page-size 100 \
-  --output custom_filename.xlsx \
+  --output files/custom_filename.xlsx \
   --filter name "Feature Request" \
   --filter channel "Sales"
 ```
+
+**Note:** The script automatically creates the `files/` directory if it doesn't exist.
 
 ## Available Options
 
@@ -165,7 +183,7 @@ docker run --rm -v $(pwd):/app productplan-api \
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `OUTPUT` | Output filename | productplan_data.xlsx |
+| `OUTPUT` | Output filename | files/productplan_data.xlsx |
 | `PAGE` | Page number | 1 |
 | `PAGE_SIZE` | Number of items per page | 200 |
 | `TOKEN_FILE` | File containing the API token | token.txt |
@@ -181,7 +199,7 @@ docker run --rm -v $(pwd):/app productplan-api \
 - `--page`: Page number (default: 1)
 - `--page-size`: Number of items per page (default: 200, max: 500)
 - `--filter`: Filter results (can be used multiple times with KEY VALUE pairs)
-- `--output`: Output filename (default: output.xlsx)
+- `--output`: Output filename (default: files/productplan_data.xlsx)
 - `--all-pages`: Fetch all pages of results automatically (ignores the --page parameter)
 - `--objective-status`: Filter objectives by status (available: 'active', 'all'; default: active)
 - `--output-format`: Output format for OKRs (available: 'excel', 'markdown'; default: excel)

@@ -2,7 +2,7 @@
 
 # Default values (can be overridden)
 ENDPOINT ?= ideas
-OUTPUT ?= productplan_data.xlsx
+OUTPUT ?= files/productplan_data.xlsx
 PAGE ?= 1
 PAGE_SIZE ?= 200
 TOKEN_FILE ?= token.txt
@@ -55,12 +55,13 @@ help:
 	@echo "  make teams             - Get all teams"
 	@echo "  make idea-forms        - Get idea forms"
 	@echo "  make okrs              - Get objectives and key results"
+	@echo "  make objectivemap      - Get objective relationship mapping"
 	@echo "  make all               - Get ideas, teams, idea forms, and OKRs"
 	@echo "  make custom            - Run with custom parameters"
 	@echo "  make build             - Build the Docker image"
 	@echo ""
 	@echo "Options (can be overridden - uppercase or lowercase):"
-	@echo "  OUTPUT=filename.xlsx   - Set output filename (default: $(OUTPUT))"
+	@echo "  OUTPUT=filename.xlsx   - Set output filename (default: files/productplan_data.xlsx)"
 	@echo "  PAGE=num               - Set page number (default: $(PAGE))"
 	@echo "  PAGE_SIZE=num          - Set page size (default: $(PAGE_SIZE))"
 	@echo "  TOKEN_FILE=file        - Set token file (default: $(TOKEN_FILE))"
@@ -69,24 +70,26 @@ help:
 	@echo "                           Options: all, visible, hidden, archived, not_archived"
 	@echo "  OBJECTIVE_STATUS=status - Filter objectives by status (default: $(OBJECTIVE_STATUS))"
 	@echo "                            Options: active, all"
-	@echo "  OUTPUT_FORMAT=format    - Output format for OKRs (default: $(OUTPUT_FORMAT))"
-	@echo "                            Options: excel, markdown"
+	@echo "  OUTPUT_FORMAT=format    - Output format (default: $(OUTPUT_FORMAT))"
+	@echo "                            Options: excel, markdown, javascript"
 	@echo "  FILTERS=\"key1:value1 key2:value2\" - Add multiple filters"
 	@echo ""
 	@echo "Note: Both uppercase (OUTPUT=) and lowercase (output=) work for convenience"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make ideas OUTPUT=all_ideas.xlsx"
+	@echo "  make ideas OUTPUT=files/all_ideas.xlsx"
 	@echo "  make ideas FILTERS=\"name:Feature Request channel:Sales\""
 	@echo "  make ideas LOCATION_STATUS=visible"
 	@echo "  make ideas LOCATION_STATUS=all"
 	@echo "  make teams ALL_PAGES=false PAGE=2"
-	@echo "  make idea-forms OUTPUT=forms.xlsx"
-	@echo "  make okrs output=objectives.xlsx"
-	@echo "  make okrs objective_status=all output=all_objectives.xlsx"
+	@echo "  make idea-forms OUTPUT=files/forms.xlsx"
+	@echo "  make okrs output=files/objectives.xlsx"
+	@echo "  make okrs objective_status=all output=files/all_objectives.xlsx"
 	@echo "  make okrs output-format=markdown"
-	@echo "  make okrs output_format=markdown output=my_objectives.md"
-	@echo "  make custom ENDPOINT=okrs output=custom_okrs.xlsx objective_status=active"
+	@echo "  make okrs output_format=markdown output=files/my_objectives.md"
+	@echo "  make objectivemap output=files/objective_mapping.xlsx"
+	@echo "  make objectivemap output_format=javascript output=files/objectives.js"
+	@echo "  make custom ENDPOINT=okrs output=files/custom_okrs.xlsx objective_status=active"
 	@echo ""
 	@echo "Note: You can still use the direct Docker commands if needed:"
 	@echo "  docker run --rm -v \$\$(pwd):/app productplan-api --endpoint ideas --all-pages --output output.xlsx"
@@ -159,7 +162,7 @@ idea-forms:
 .PHONY: okrs
 okrs:
 	@echo "Fetching objectives and key results..."
-	$(eval FINAL_OUTPUT := $(if $(and $(filter markdown,$(OUTPUT_FORMAT)),$(filter productplan_data.xlsx,$(OUTPUT))),okrs.md,$(OUTPUT)))
+	$(eval FINAL_OUTPUT := $(if $(and $(filter markdown,$(OUTPUT_FORMAT)),$(filter files/productplan_data.xlsx,$(OUTPUT))),files/okrs.md,$(OUTPUT)))
 	@$(DOCKER_CMD) \
 		--endpoint okrs \
 		--page $(PAGE) \
@@ -172,14 +175,30 @@ okrs:
 		$(call process_filters)
 	@echo "OKRs saved to $(FINAL_OUTPUT)"
 
+# Get objective relationship mapping
+.PHONY: objectivemap
+objectivemap:
+	@echo "Fetching objective relationship mapping..."
+	@$(DOCKER_CMD) \
+		--endpoint objectivemap \
+		--page $(PAGE) \
+		--page-size $(PAGE_SIZE) \
+		--token-file $(TOKEN_FILE) \
+		--output $(OUTPUT) \
+		--objective-status $(OBJECTIVE_STATUS) \
+		--output-format $(OUTPUT_FORMAT) \
+		$(call all_pages_flag) \
+		$(call process_filters)
+	@echo "Objective mapping saved to $(OUTPUT)"
+
 # Get ideas, teams, idea forms, and OKRs
 .PHONY: all
 all:
-	@make ideas OUTPUT=ideas.xlsx
-	@make teams OUTPUT=teams.xlsx
-	@make idea-forms OUTPUT=idea-forms.xlsx
-	@make okrs OUTPUT=okrs.xlsx
-	@echo "Done! Files saved as ideas.xlsx, teams.xlsx, idea-forms.xlsx, and okrs.xlsx"
+	@make ideas OUTPUT=files/ideas.xlsx
+	@make teams OUTPUT=files/teams.xlsx
+	@make idea-forms OUTPUT=files/idea-forms.xlsx
+	@make okrs OUTPUT=files/okrs.xlsx
+	@echo "Done! Files saved in files/ directory as ideas.xlsx, teams.xlsx, idea-forms.xlsx, and okrs.xlsx"
 
 # Custom command with all options specified on command line
 .PHONY: custom

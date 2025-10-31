@@ -51,6 +51,12 @@ help:
 	@echo ""
 	@echo "Available commands:"
 	@echo "  make help              - Show this help message"
+	@echo "  make build             - Build the Docker image"
+	@echo "  make test              - Run mocked unit and integration tests"
+	@echo "  make test-smoke        - Run smoke tests (requires token.txt, hits real API)"
+	@echo "  make test-all          - Run all tests (mocked + smoke)"
+	@echo ""
+	@echo "Data fetching commands:"
 	@echo "  make ideas             - Get ideas with team columns"
 	@echo "  make teams             - Get all teams"
 	@echo "  make idea-forms        - Get idea forms"
@@ -58,7 +64,6 @@ help:
 	@echo "  make objectivemap      - Get objective relationship mapping"
 	@echo "  make all               - Get ideas, teams, idea forms, and OKRs"
 	@echo "  make custom            - Run with custom parameters"
-	@echo "  make build             - Build the Docker image"
 	@echo ""
 	@echo "Options (can be overridden - uppercase or lowercase):"
 	@echo "  OUTPUT=filename.xlsx   - Set output filename (default: files/productplan_data.xlsx)"
@@ -100,6 +105,27 @@ build:
 	@echo "Building ProductPlan API Docker image..."
 	docker build -t productplan-api .
 	@echo "Docker image built successfully!"
+
+# Run mocked unit and integration tests
+.PHONY: test
+test:
+	@echo "Running mocked tests..."
+	docker run --rm -v $(CURDIR):/app --entrypoint pytest productplan-api tests/ -v --ignore=tests/smoke
+	@echo "Tests completed!"
+
+# Run smoke tests (requires token.txt and hits real API)
+.PHONY: test-smoke
+test-smoke:
+	@echo "Running smoke tests against real ProductPlan API..."
+	@echo "Note: This requires a valid token.txt file and will make real API calls."
+	docker run --rm -v $(CURDIR):/app --entrypoint pytest productplan-api tests/smoke/ -v
+	@echo "Smoke tests completed!"
+
+# Run all tests (mocked + smoke)
+.PHONY: test-all
+test-all:
+	@make test
+	@make test-smoke
 
 # Process filters from space-separated key:value pairs
 define process_filters

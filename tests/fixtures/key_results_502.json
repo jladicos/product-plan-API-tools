@@ -1,0 +1,21 @@
+{
+  "results": [
+    {
+      "id": 603,
+      "name": null,
+      "description": "Increase daily active users by 30%",
+      "target": "30.0",
+      "current": "15.0",
+      "progress": "50%",
+      "team_ids": [3],
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-20T12:00:00Z"
+    }
+  ],
+  "paging": {
+    "page": 1,
+    "page_size": 200,
+    "total": 1,
+    "next": null
+  }
+}

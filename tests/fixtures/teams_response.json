@@ -1,0 +1,26 @@
+{
+  "results": [
+    {
+      "id": 1,
+      "name": "Product Team"
+    },
+    {
+      "id": 2,
+      "name": "Engineering Team"
+    },
+    {
+      "id": 3,
+      "name": "Design Team"
+    },
+    {
+      "id": 4,
+      "name": "Marketing Team"
+    }
+  ],
+  "paging": {
+    "page": 1,
+    "page_size": 200,
+    "total": 4,
+    "next": null
+  }
+}

@@ -14,17 +14,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy script
-COPY productplan_api.py .
+# Copy package and tests
+COPY productplan_api_tools/ productplan_api_tools/
+COPY tests/ tests/
 
 # Create an empty token file if needed (will be overwritten by volume mount)
 RUN touch token.txt
 
-# Make script executable
-RUN chmod +x productplan_api.py
-
-# Set entrypoint
-ENTRYPOINT ["python", "productplan_api.py"]
+# Set entrypoint to use new package
+ENTRYPOINT ["python", "-m", "productplan_api_tools"]
 
 # Default command (can be overridden)
 CMD ["--help"]

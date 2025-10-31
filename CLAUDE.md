@@ -336,57 +336,105 @@ make custom ENDPOINT=okrs OUTPUT_FORMAT=markdown OUTPUT=quarterly_review.md OBJE
 
 ## Architecture Overview
 
-This is a Python-based ProductPlan API client that runs in Docker containers with simplified Make commands.
+This is a Python-based ProductPlan API client with a clean, layered architecture. It runs in Docker containers with simplified Make commands.
+
+### Package Structure
+
+```
+productplan_api_tools/
+├── __init__.py
+├── __main__.py          # Entry point (python -m productplan_api_tools)
+├── cli.py               # CLI argument parsing and command routing (360 lines)
+├── utils.py             # Parsing and processing utilities (358 lines)
+├── api/
+│   ├── __init__.py
+│   ├── client.py        # BaseResource - HTTP, auth, pagination (232 lines)
+│   ├── ideas.py         # IdeasResource - ideas endpoint
+│   ├── teams.py         # TeamsResource - teams endpoint (69 lines)
+│   ├── okrs.py          # OKRsResource - objectives & key results (335 lines)
+│   ├── idea_forms.py    # IdeaFormsResource - idea forms endpoint
+│   └── objective_maps.py # ObjectiveMappingResource - objective mapping
+└── exporters/
+    ├── __init__.py
+    ├── base.py          # Utility functions (directory creation)
+    ├── excel.py         # Excel export (49 lines)
+    ├── markdown.py      # Markdown export for OKRs
+    └── javascript.py    # JavaScript export for Miro boards
+```
 
 ### Core Components
 
-1. **ProductPlanAPI class** (`productplan_api.py:13-176`)
+1. **BaseResource class** (`api/client.py`)
    - Handles authentication via Bearer token from `token.txt`
-   - Makes paginated requests to ProductPlan API v2
-   - Supports ideas (`discovery/ideas`), teams, and idea forms (`discovery/idea_forms`) endpoints
-   - Automatic pagination with `_fetch_all_pages` method
+   - Provides common HTTP request methods (`_make_request`, `_fetch_all_pages`)
+   - Implements pagination logic for all endpoints
+   - Abstract base class - all resources inherit from it
 
-2. **DataExporter class** (`productplan_api.py:178-350`)
-   - Exports data to Excel format using pandas
-   - For ideas: processes custom text fields into separate columns with "Custom: " prefix
-   - For ideas: adds team assignment columns (1 if assigned, 0 if not)
-   - Handles JSON parsing of nested API response data
+2. **Resource classes** (`api/*.py`)
+   - **TeamsResource**: Teams endpoint, builds ID-to-name mapping
+   - **IdeasResource**: Ideas endpoint with location filtering and custom field extraction
+   - **OKRsResource**: Objectives and key results with team resolution and flattening
+   - **IdeaFormsResource**: Idea forms with custom field flattening
+   - **ObjectiveMappingResource**: Cartesian product of company/team objectives
 
-3. **Makefile-based interface** (`Makefile:1-119`)
+3. **Utils module** (`utils.py`)
+   - `parse_custom_text_fields()` - Parse JSON/list custom fields
+   - `parse_custom_dropdown_fields()` - Parse dropdown fields
+   - `parse_team_ids()` - Parse team IDs from various formats
+   - `add_custom_field_columns()` - Add custom field columns to ideas
+   - `add_team_columns()` - Add binary team assignment columns
+   - `process_ideas()` - Two-pass processing (collect labels, then process)
+   - `process_idea_forms()` - Flatten nested form structures
+
+4. **Exporters** (`exporters/*.py`)
+   - **excel.py**: Pandas-based Excel export (all data types)
+   - **markdown.py**: Hierarchical markdown for OKRs
+   - **javascript.py**: Miro board JavaScript format for objective mapping
+   - All exporters are module-level functions (not classes)
+
+5. **CLI module** (`cli.py`)
+   - `parse_arguments()` - argparse-based argument parsing
+   - Handler functions for each endpoint (ideas, teams, okrs, etc.)
+   - `route_command()` - Lightweight dispatcher to handlers
+   - Identical interface to old monolithic script
+
+6. **Makefile-based interface** (`Makefile`)
    - Wraps Docker commands with simplified Make targets
-   - Processes space-separated filter syntax (`key:value key2:value2`)
-   - Handles parameter passing to Docker container
-   - Default output path is `files/productplan_data.xlsx` (customizable via OUTPUT parameter)
+   - Passes arguments to `python -m productplan_api_tools`
+   - Default output path is `files/productplan_data.xlsx`
 
 ### Data Processing Flow
 
-When fetching ideas:
-1. API call retrieves paginated results from ProductPlan
-2. For each idea, detailed information is fetched using individual idea endpoint
-3. Location status filtering is applied (excludes archived ideas by default)
-4. Team mapping is built from separate teams API call
-5. Custom text fields are parsed and extracted into individual columns with "Custom: " prefix
-6. Custom dropdown fields are parsed and extracted into individual columns with "Custom_Dropdown: " prefix
-7. Team assignments are converted to binary columns (one per team)
-8. Enhanced idea data with timestamps and all details is exported to Excel in `files/` directory
+**Ideas endpoint:**
+1. CLI calls IdeasResource.fetch_enhanced()
+2. Fetch paginated list of ideas
+3. For each idea, fetch detailed information (custom fields, timestamps)
+4. Apply location_status filtering (exclude archived by default)
+5. Fetch teams and build ID-to-name mapping
+6. Process ideas with utils.process_ideas() (add custom field and team columns)
+7. Export to Excel via exporters.excel.export()
 
-When fetching idea forms:
-1. API call retrieves list of idea forms from ProductPlan
-2. For each form, detailed information is fetched using individual form endpoint
-3. Custom text fields and dropdown fields are flattened into separate columns
-4. Enhanced form data with all details is exported to Excel in `files/` directory
+**OKRs endpoint:**
+1. CLI calls OKRsResource.fetch_enhanced()
+2. Fetch teams and build mapping
+3. Fetch objectives with status filtering
+4. For each objective, fetch detailed info and key results
+5. Resolve team IDs to names
+6. Flatten to one row per key result (or one row if no key results)
+7. Export to Excel or Markdown based on output_format parameter
 
-**File Output:** All generated files are saved to the `files/` directory by default. The script automatically creates this directory if it doesn't exist using `os.makedirs(output_dir, exist_ok=True)` in all export methods.
+**File Output:** All generated files are saved to the `files/` directory by default.
 
 ### Key Files
 
-- `productplan_api.py` - Main API client and data processing logic
+- `productplan_api_tools/` - Main package with layered architecture (~2,500 lines total)
+- `productplan_api.py.old` - Archived monolithic version (reference only)
 - `Makefile` - Command interface with Docker integration
-- `Dockerfile` - Python 3.9 container with pandas/requests dependencies
-- `requirements.txt` - Python dependencies (requests, pandas, openpyxl, numpy)
+- `Dockerfile` - Python 3.9 container, entry point: `python -m productplan_api_tools`
+- `requirements.txt` - Python dependencies (requests, pandas, openpyxl, numpy, pytest)
 - `token.txt` - ProductPlan API token (not in repo, created by setup.sh)
 - `files/` - Directory for all generated output files (auto-created, git-ignored)
-- `plans/` - Historical detailed implementation plans (git-ignored)
+- `tests/` - Comprehensive test suite (169 tests: 127 unit + 42 integration)
 
 ## OKR Usage Examples and Best Practices
 

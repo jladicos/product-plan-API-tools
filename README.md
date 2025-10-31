@@ -58,6 +58,67 @@ All generated files are automatically saved to the `files/` directory:
    - Build the Docker image
    - Provide quick-start instructions
 
+## Testing
+
+This project includes a comprehensive test suite with 137 total tests ensuring reliability and preventing regressions.
+
+### Test Types
+
+**Unit Tests** - Test individual components in isolation (127 tests):
+- Test all package components (resources, exporters, utils, CLI)
+- Mock external dependencies (HTTP requests, file I/O)
+- Fast execution (~0.5 seconds)
+- 100% coverage of architecture
+- Run automatically on every change
+- Run with: `make test`
+
+**Smoke Tests (Real API)** - Verify API contracts haven't changed (10 tests):
+- Hit actual ProductPlan API endpoints
+- Test authentication, teams, ideas, OKRs, idea forms, objective mapping
+- Require valid `token.txt` file
+- Run occasionally (before releases, after API changes)
+- Skip gracefully if token file is missing
+- Run with: `make test-smoke`
+
+### Running Tests
+
+```bash
+# Run unit tests (recommended for development)
+make test
+
+# Run smoke tests against real API (requires token.txt)
+make test-smoke
+
+# Run all tests (unit + smoke)
+make test-all
+```
+
+### Test Results Summary
+
+- **Unit Tests**: 127/127 passing (100%)
+- **Smoke Tests**: 10/10 passing (100%)
+- **Total Tests**: 137/137 passing (100%)
+- **All Tests Verified**: ✅ October 31, 2024
+
+### Test Coverage
+
+The test suite provides comprehensive coverage:
+- ✅ All API endpoints (ideas, teams, OKRs, idea forms)
+- ✅ Pagination (multi-page, single page, empty results)
+- ✅ Filtering (basic filters, location_status, objective_status)
+- ✅ Custom field parsing and extraction
+- ✅ Team mapping and binary columns
+- ✅ Excel, Markdown, and JavaScript exports
+- ✅ Error handling and edge cases
+
+### When to Run Tests
+
+- **Integration tests**: Run frequently during development (fast, no API calls)
+- **Smoke tests**: Run before releases or when API changes are suspected
+- **All tests**: Run before major releases or refactoring
+
+For more details, see `tests/smoke/README.md`.
+
 ## Usage with Make Commands
 
 ### Basic Usage

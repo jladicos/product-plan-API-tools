@@ -1,0 +1,97 @@
+{
+  "results": [
+    {
+      "id": 101,
+      "name": "Add dark mode support",
+      "description": "Users have requested a dark mode theme option",
+      "channel": "Customer Feedback",
+      "customer": "Acme Corp",
+      "opportunities_count": 3,
+      "source_name": "John Doe",
+      "source_email": "john@acme.com",
+      "location_status": "visible",
+      "tags": ["ui", "ux", "accessibility"],
+      "created_at": "2024-01-15T10:30:00Z",
+      "updated_at": "2024-01-20T14:45:00Z",
+      "opportunity_ids": [201, 202, 203],
+      "team_ids": [1, 2],
+      "custom_text_fields": [
+        {
+          "label": "Problem to be solved",
+          "value": "Users struggle to use the app in low-light environments"
+        }
+      ],
+      "custom_dropdown_fields": [
+        {
+          "label": "Priority",
+          "value": "High"
+        }
+      ],
+      "idea_form_id": 301
+    },
+    {
+      "id": 102,
+      "name": "API rate limiting",
+      "description": "Implement rate limiting for public API endpoints",
+      "channel": "Internal",
+      "customer": null,
+      "opportunities_count": 0,
+      "source_name": "Engineering Team",
+      "source_email": "eng@company.com",
+      "location_status": "visible",
+      "tags": ["api", "security"],
+      "created_at": "2024-01-18T09:00:00Z",
+      "updated_at": "2024-01-18T09:00:00Z",
+      "opportunity_ids": [],
+      "team_ids": [3],
+      "custom_text_fields": [
+        {
+          "label": "Problem to be solved",
+          "value": "Prevent API abuse and ensure fair usage"
+        }
+      ],
+      "custom_dropdown_fields": [
+        {
+          "label": "Priority",
+          "value": "Medium"
+        }
+      ],
+      "idea_form_id": 301
+    },
+    {
+      "id": 103,
+      "name": "Export to PDF",
+      "description": "Allow users to export reports as PDF files",
+      "channel": "Customer Feedback",
+      "customer": "Beta Inc",
+      "opportunities_count": 5,
+      "source_name": "Jane Smith",
+      "source_email": "jane@beta.com",
+      "location_status": "archived",
+      "tags": ["export", "reporting"],
+      "created_at": "2024-01-10T11:20:00Z",
+      "updated_at": "2024-01-25T16:30:00Z",
+      "opportunity_ids": [204, 205, 206, 207, 208],
+      "team_ids": [1],
+      "custom_text_fields": [
+        {
+          "label": "Problem to be solved",
+          "value": "Users need to share reports offline"
+        }
+      ],
+      "custom_dropdown_fields": [
+        {
+          "label": "Priority",
+          "value": "Low"
+        }
+      ],
+      "idea_form_id": 302
+    }
+  ],
+  "paging": {
+    "page": 1,
+    "page_size": 200,
+    "total": 3,
+    "next": null
+  }
+}

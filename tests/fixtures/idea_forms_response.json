@@ -1,0 +1,60 @@
+{
+  "results": [
+    {
+      "id": 301,
+      "title": "Product Feature Request",
+      "instructions": "Please describe the feature you would like to see",
+      "enabled": true,
+      "custom_text_fields": [
+        {
+          "label": "Problem to be solved",
+          "required": true
+        },
+        {
+          "label": "Proposed solution",
+          "required": false
+        }
+      ],
+      "custom_dropdown_fields": [
+        {
+          "label": "Priority",
+          "allowed_values": ["High", "Medium", "Low"],
+          "required": true
+        }
+      ],
+      "created_at": "2023-12-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    },
+    {
+      "id": 302,
+      "title": "Bug Report",
+      "instructions": "Please provide details about the bug",
+      "enabled": true,
+      "custom_text_fields": [
+        {
+          "label": "Steps to reproduce",
+          "required": true
+        },
+        {
+          "label": "Expected behavior",
+          "required": true
+        }
+      ],
+      "custom_dropdown_fields": [
+        {
+          "label": "Severity",
+          "allowed_values": ["Critical", "Major", "Minor"],
+          "required": true
+        }
+      ],
+      "created_at": "2023-12-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    }
+  ],
+  "paging": {
+    "page": 1,
+    "page_size": 200,
+    "total": 2,
+    "next": null
+  }
+}

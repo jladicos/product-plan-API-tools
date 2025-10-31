@@ -1,0 +1,22 @@
+{
+  "results": [
+    {
+      "id": 3,
+      "name": "Idea Page 2 Item 1",
+      "description": "First item on page 2",
+      "location_status": "visible"
+    },
+    {
+      "id": 4,
+      "name": "Idea Page 2 Item 2",
+      "description": "Second item on page 2",
+      "location_status": "visible"
+    }
+  ],
+  "paging": {
+    "page": 2,
+    "page_size": 2,
+    "total": 5,
+    "next": "https://app.productplan.com/api/v2/discovery/ideas?page=3&page_size=2"
+  }
+}

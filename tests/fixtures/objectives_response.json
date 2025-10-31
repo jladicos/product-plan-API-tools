@@ -1,0 +1,38 @@
+{
+  "results": [
+    {
+      "id": 501,
+      "name": "Improve Product Quality",
+      "description": "Deliver a more stable and reliable product",
+      "subject": null,
+      "team_ids": [1, 2],
+      "opportunity_ids": [],
+      "key_result_ids": [601, 602],
+      "bar_ids": [],
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-15T10:00:00Z",
+      "risk_status": "on_track",
+      "location_status": "active"
+    },
+    {
+      "id": 502,
+      "name": "Increase User Engagement",
+      "description": "Drive more active usage of the platform",
+      "subject": null,
+      "team_ids": [3],
+      "opportunity_ids": [],
+      "key_result_ids": [603],
+      "bar_ids": [],
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-10T15:00:00Z",
+      "risk_status": "at_risk",
+      "location_status": "active"
+    }
+  ],
+  "paging": {
+    "page": 1,
+    "page_size": 200,
+    "total": 2,
+    "next": null
+  }
+}

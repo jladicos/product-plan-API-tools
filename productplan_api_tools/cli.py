@@ -21,6 +21,9 @@ from productplan_api_tools.api.objective_maps import ObjectiveMappingResource
 from productplan_api_tools import exporters
 from productplan_api_tools import utils
 
+# Import SLA manager functions
+from productplan_api_tools.sla.manager import sla_init, sla_update
+
 
 def parse_arguments() -> argparse.Namespace:
     """
@@ -52,8 +55,8 @@ def parse_arguments() -> argparse.Namespace:
         '--endpoint',
         type=str,
         default='ideas',
-        choices=['ideas', 'teams', 'idea-forms', 'okrs', 'objectivemap'],
-        help='API endpoint to fetch from (default: ideas)'
+        choices=['ideas', 'teams', 'idea-forms', 'okrs', 'objectivemap', 'sla-init', 'sla-update'],
+        help='API endpoint to fetch from or SLA command to run (default: ideas)'
     )
 
     parser.add_argument(
@@ -329,6 +332,56 @@ def handle_objectivemap_command(args: argparse.Namespace, token_file: str) -> No
         exporters.excel.export(mapping_data, args.output)
 
 
+def handle_sla_init_command(args: argparse.Namespace, token_file: str) -> None:
+    """
+    Handle sla-init command
+
+    Creates initial SLA tracking spreadsheet with all current ideas.
+
+    Args:
+        args: Parsed arguments
+        token_file: Path to token file (always 'token.txt')
+
+    Side effects:
+        Creates Excel spreadsheet at output path with SLA tracking data
+    """
+    # Use sla_tracking.xlsx as default if still using generic default
+    output_path = args.output
+    if output_path == 'files/productplan_data.xlsx':
+        output_path = 'files/sla_tracking.xlsx'
+
+    print(f"Initializing SLA tracking spreadsheet...")
+    print(f"Output: {output_path}")
+
+    # Call sla_init from manager
+    sla_init(output_path=output_path, token_file=token_file)
+
+
+def handle_sla_update_command(args: argparse.Namespace, token_file: str) -> None:
+    """
+    Handle sla-update command
+
+    Updates existing SLA tracking spreadsheet with recent changes (14-day lookback).
+
+    Args:
+        args: Parsed arguments
+        token_file: Path to token file (always 'token.txt')
+
+    Side effects:
+        Updates Excel spreadsheet at output path with recent SLA changes
+    """
+    # Use sla_tracking.xlsx as default if still using generic default
+    output_path = args.output
+    if output_path == 'files/productplan_data.xlsx':
+        output_path = 'files/sla_tracking.xlsx'
+
+    print(f"Updating SLA tracking spreadsheet...")
+    print(f"Output: {output_path}")
+
+    # Call sla_update from manager
+    sla_update(output_path=output_path, token_file=token_file)
+
+
 def route_command(args: argparse.Namespace) -> None:
     """
     Route CLI command to appropriate handler
@@ -346,9 +399,15 @@ def route_command(args: argparse.Namespace) -> None:
     Side effects:
         Delegates to handler functions which fetch/process/export data
     """
+    # For SLA commands, always use token.txt (ignore --token-file arg)
+    if args.endpoint in ['sla-init', 'sla-update']:
+        token_file = 'token.txt'
+    else:
+        token_file = args.token_file
+
     # Validate token file exists
-    if not os.path.isfile(args.token_file):
-        print(f"Error: Token file not found: {args.token_file}")
+    if not os.path.isfile(token_file):
+        print(f"Error: Token file not found: {token_file}")
         print("Please create a token file with your ProductPlan API token.")
         sys.exit(1)
 
@@ -358,7 +417,9 @@ def route_command(args: argparse.Namespace) -> None:
         'teams': handle_teams_command,
         'idea-forms': handle_idea_forms_command,
         'okrs': handle_okrs_command,
-        'objectivemap': handle_objectivemap_command
+        'objectivemap': handle_objectivemap_command,
+        'sla-init': handle_sla_init_command,
+        'sla-update': handle_sla_update_command
     }
 
     handler = handlers.get(args.endpoint)
@@ -368,4 +429,4 @@ def route_command(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     # Call the handler
-    handler(args, args.token_file)
+    handler(args, token_file)

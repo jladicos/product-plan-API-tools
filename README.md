@@ -8,6 +8,7 @@ A flexible Python script to fetch data from the ProductPlan API and export it to
 - Fetch teams from ProductPlan API
 - Fetch idea forms from ProductPlan API with detailed information (includes custom fields, instructions, etc.)
 - **NEW: Fetch objectives and key results (OKRs) from ProductPlan API**
+- **NEW: SLA tracking for customer ideas** - Monitor response and roadmap decision timelines
 - Export data to Excel format
 - **NEW: Export OKR data to Markdown format for documentation and reporting**
 - Filter results using command-line arguments
@@ -28,6 +29,7 @@ All generated files are automatically saved to the `files/` directory:
 - `files/teams.xlsx` - Team information
 - `files/idea-forms.xlsx` - Idea form definitions
 - `files/okrs.xlsx` or `files/okrs.md` - Objectives and key results data
+- `files/sla_tracking.xlsx` - SLA tracking spreadsheet for monitoring response and roadmap timelines
 - The `files/` directory is git-ignored to keep your repository clean
 - The script automatically creates this directory if it doesn't exist
 
@@ -58,16 +60,52 @@ All generated files are automatically saved to the `files/` directory:
    - Build the Docker image
    - Provide quick-start instructions
 
+### Google Sheets Setup (Optional)
+
+If you want to use Google Sheets instead of Excel for SLA tracking, you'll need Google Cloud credentials:
+
+1. **Create a Google Cloud Project:**
+   - Go to https://console.cloud.google.com/
+   - Create a new project (or use an existing one)
+
+2. **Enable Google Sheets API:**
+   - In your project, go to "APIs & Services" → "Library"
+   - Search for "Google Sheets API"
+   - Click "Enable"
+
+3. **Create a Service Account:**
+   - Go to "IAM & Admin" → "Service Accounts"
+   - Click "+ CREATE SERVICE ACCOUNT"
+   - Name it (e.g., "productplan-sla-tracking")
+   - Click "Create and Continue" (skip optional steps)
+
+4. **Create and Download Key:**
+   - Click on your new service account
+   - Go to "Keys" tab
+   - Click "Add Key" → "Create new key"
+   - Choose "JSON" format
+   - Click "Create" - this downloads a JSON file
+
+5. **Save the Credentials:**
+   - Copy the downloaded JSON file to: `env/google-credentials.json`
+   - The `env/` folder is git-ignored for security
+   - See `env/google-credentials-sample.json` for the expected format
+
+6. **Share Your Google Sheet:**
+   - Open the `client_email` from your JSON file (e.g., `your-service-account@your-project.iam.gserviceaccount.com`)
+   - Share your Google Sheet with this email address
+   - Give it "Editor" permissions
+
 ## Testing
 
-This project includes a comprehensive test suite with 137 total tests ensuring reliability and preventing regressions.
+This project includes a comprehensive test suite with 219 total tests ensuring reliability and preventing regressions.
 
 ### Test Types
 
-**Unit Tests** - Test individual components in isolation (127 tests):
-- Test all package components (resources, exporters, utils, CLI)
+**Unit Tests** - Test individual components in isolation (209 tests):
+- Test all package components (resources, exporters, utils, CLI, SLA tracking)
 - Mock external dependencies (HTTP requests, file I/O)
-- Fast execution (~0.5 seconds)
+- Fast execution (~1 second)
 - 100% coverage of architecture
 - Run automatically on every change
 - Run with: `make test`
@@ -95,15 +133,16 @@ make test-all
 
 ### Test Results Summary
 
-- **Unit Tests**: 127/127 passing (100%)
+- **Unit Tests**: 209/209 passing (100%)
 - **Smoke Tests**: 10/10 passing (100%)
-- **Total Tests**: 137/137 passing (100%)
-- **All Tests Verified**: ✅ October 31, 2024
+- **Total Tests**: 219/219 passing (100%)
+- **All Tests Verified**: ✅ November 3, 2025
 
 ### Test Coverage
 
 The test suite provides comprehensive coverage:
 - ✅ All API endpoints (ideas, teams, OKRs, idea forms)
+- ✅ SLA tracking (calculator, storage, manager, integration)
 - ✅ Pagination (multi-page, single page, empty results)
 - ✅ Filtering (basic filters, location_status, objective_status)
 - ✅ Custom field parsing and extraction
@@ -147,6 +186,119 @@ make all
 # See all available commands and options
 make help
 ```
+
+### SLA Tracking
+
+Track service level agreement (SLA) compliance for customer ideas with automated monitoring of response and roadmap decision timelines.
+
+#### SLA Metrics
+
+The SLA tracking system monitors two key metrics:
+
+1. **Response SLA (14 days)**: Idea status must change from "On deck" to any other status within 14 days of creation
+2. **Roadmap SLA (60 days)**: Idea must reach a final decision ("Accepted" or "Rejected") within 60 days of creation
+
+#### SLA Commands
+
+```bash
+# Initialize SLA tracking spreadsheet (first-time setup)
+make sla-init
+
+# Update SLA tracking spreadsheet (daily updates)
+make sla-update
+
+# Custom output filename
+make sla-init OUTPUT=files/custom_sla.xlsx
+make sla-update OUTPUT=files/custom_sla.xlsx
+```
+
+#### How SLA Tracking Works
+
+**Initialization** (`make sla-init`):
+- Fetches all ideas from ProductPlan (including archived)
+- Applies filtering rules to exclude test/development ideas
+- Calculates SLA dates based on current idea status
+- Creates Excel spreadsheet with full audit trail
+
+**Daily Updates** (`make sla-update`):
+- Fetches ideas updated in the last 14 days (buffer for missed runs)
+- Compares with existing spreadsheet
+- Updates changed ideas (preserves historical SLA dates)
+- Adds new ideas that pass filtering
+- Removes ideas that now fail filtering
+
+**SLA Date Logic**:
+- **response_sla**: Set once when status changes from "On deck" (never cleared)
+- **roadmap_sla**: Set once when status becomes "Accepted" or "Rejected" (never cleared)
+- **Historical preservation**: SLA dates are audit trail - once set, never modified
+- **Current compliance**: Boolean columns reflect whether idea currently meets criteria
+
+#### Spreadsheet Column Structure
+
+The SLA tracking spreadsheet includes:
+
+**Core Columns:**
+- `id`, `name`, `description`, `customer`, `source_name`, `source_email`
+
+**Timestamps:**
+- `created_at`: When idea was created in ProductPlan
+- `updated_at`: When idea was last modified
+
+**Status:**
+- `idea_status`: Current status from custom dropdown ("On deck", "In Review", "Accepted", "Rejected")
+- `location_status`: Visibility status (visible, hidden, archived)
+
+**SLA Tracking:**
+- `response_sla`: Date when status first changed from "On deck" (historical, never cleared)
+- `roadmap_sla`: Date when status became "Accepted" or "Rejected" (historical, never cleared)
+- `currently_meets_response_sla`: Boolean - does idea currently meet 14-day response SLA?
+- `currently_meets_roadmap_sla`: Boolean - does idea currently meet 60-day roadmap SLA?
+
+**Team Assignments:**
+- Binary columns (1/0) for each team indicating assignment
+
+**Custom Fields:**
+- Additional custom text and dropdown fields from ProductPlan
+
+#### Filtering Rules
+
+To exclude test and development ideas, the following filters are applied:
+
+1. **Date cutoff**: Ideas created before September 15, 2025 are excluded
+2. **Jason Ladicos filter**: Ideas from "Jason Ladicos" created before November 3, 2025 are excluded (test data)
+3. **TEST customer filter**: Ideas with customer="TEST" (exact match) are excluded
+
+These filters are case-sensitive and require exact matches.
+
+#### Usage Example
+
+```bash
+# Initial setup (first time)
+make sla-init
+
+# Expected output:
+# - Fetches all ideas from ProductPlan
+# - Applies filtering rules
+# - Creates files/sla_tracking.xlsx
+# - Shows SLA compliance summary
+
+# Daily updates (run via cron or Apple Shortcut)
+make sla-update
+
+# Expected output:
+# - Fetches recently updated ideas (last 14 days)
+# - Updates changed ideas (preserves historical SLA dates)
+# - Shows changes summary (Added: X, Updated: Y, Removed: Z)
+# - Shows current SLA compliance statistics
+```
+
+#### Best Practices
+
+- **Run `sla-init` once** to create the initial spreadsheet
+- **Run `sla-update` daily** to keep tracking current (via cron job or Apple Shortcut)
+- **14-day lookback buffer** ensures missed runs don't lose updates
+- **Historical SLA dates preserved** - provides audit trail of when criteria were first met
+- **Current compliance tracked** - boolean columns update if status regresses
 
 ### Customizing Output Filename
 

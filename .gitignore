@@ -1,6 +1,10 @@
 # Ignore API token
 token.txt
 
+# Ignore credentials in env/ folder (but allow sample files)
+env/*
+!env/*sample*
+
 # Ignore output files (now in files/ directory)
 # files/ directory has its own .gitignore
 

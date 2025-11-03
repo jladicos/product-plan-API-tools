@@ -65,6 +65,10 @@ help:
 	@echo "  make all               - Get ideas, teams, idea forms, and OKRs"
 	@echo "  make custom            - Run with custom parameters"
 	@echo ""
+	@echo "SLA tracking commands:"
+	@echo "  make sla-init          - Initialize SLA tracking spreadsheet (default: files/sla_tracking.xlsx)"
+	@echo "  make sla-update        - Update SLA tracking spreadsheet with recent changes"
+	@echo ""
 	@echo "Options (can be overridden - uppercase or lowercase):"
 	@echo "  OUTPUT=filename.xlsx   - Set output filename (default: files/productplan_data.xlsx)"
 	@echo "  PAGE=num               - Set page number (default: $(PAGE))"
@@ -94,6 +98,9 @@ help:
 	@echo "  make okrs output_format=markdown output=files/my_objectives.md"
 	@echo "  make objectivemap output=files/objective_mapping.xlsx"
 	@echo "  make objectivemap output_format=javascript output=files/objectives.js"
+	@echo "  make sla-init"
+	@echo "  make sla-init OUTPUT=files/custom_sla.xlsx"
+	@echo "  make sla-update"
 	@echo "  make custom ENDPOINT=okrs output=files/custom_okrs.xlsx objective_status=active"
 	@echo ""
 	@echo "Note: You can still use the direct Docker commands if needed:"
@@ -216,6 +223,28 @@ objectivemap:
 		$(call all_pages_flag) \
 		$(call process_filters)
 	@echo "Objective mapping saved to $(OUTPUT)"
+
+# Initialize SLA tracking spreadsheet
+.PHONY: sla-init
+sla-init:
+	$(eval SLA_OUTPUT := $(if $(filter files/productplan_data.xlsx,$(OUTPUT)),files/sla_tracking.xlsx,$(OUTPUT)))
+	@echo "Initializing SLA tracking spreadsheet..."
+	@$(DOCKER_CMD) \
+		--endpoint sla-init \
+		--token-file token.txt \
+		--output $(SLA_OUTPUT)
+	@echo "SLA tracking spreadsheet initialized at $(SLA_OUTPUT)"
+
+# Update SLA tracking spreadsheet (daily incremental updates)
+.PHONY: sla-update
+sla-update:
+	$(eval SLA_OUTPUT := $(if $(filter files/productplan_data.xlsx,$(OUTPUT)),files/sla_tracking.xlsx,$(OUTPUT)))
+	@echo "Updating SLA tracking spreadsheet..."
+	@$(DOCKER_CMD) \
+		--endpoint sla-update \
+		--token-file token.txt \
+		--output $(SLA_OUTPUT)
+	@echo "SLA tracking spreadsheet updated at $(SLA_OUTPUT)"
 
 # Get ideas, teams, idea forms, and OKRs
 .PHONY: all

@@ -122,7 +122,23 @@ class ExcelSLAStorage:
             os.makedirs(output_dir, exist_ok=True)
 
         # Create Excel writer with openpyxl engine for formatting support
-        with pd.ExcelWriter(self.file_path, engine='openpyxl', mode='w') as writer:
+        # Use mode='a' if file exists AND is valid Excel file (to preserve other sheets like Runs)
+        # Use mode='w' if file doesn't exist or is not a valid Excel file
+        mode = 'w'
+        if_sheet_exists = None
+
+        if os.path.exists(self.file_path) and os.path.getsize(self.file_path) > 0:
+            # File exists and has content - try to open in append mode
+            try:
+                # Test if it's a valid Excel file by trying to read it
+                pd.ExcelFile(self.file_path)
+                mode = 'a'
+                if_sheet_exists = 'replace'
+            except:
+                # Not a valid Excel file - use write mode
+                mode = 'w'
+
+        with pd.ExcelWriter(self.file_path, engine='openpyxl', mode=mode, if_sheet_exists=if_sheet_exists) as writer:
             # Write DataFrame to Excel
             df.to_excel(writer, index=False, sheet_name='SLA Tracking')
 
@@ -164,6 +180,60 @@ class ExcelSLAStorage:
             Absolute path to Excel file
         """
         return self.file_path
+
+    def record_run(self, run_type: str, records_added: int, records_updated: int) -> None:
+        """
+        Record a run (init or update) in the Runs tracking sheet
+
+        Appends a new row to the Runs sheet with execution details.
+        Creates the Runs sheet if it doesn't exist.
+
+        Args:
+            run_type: Type of run ("init" or "update")
+            records_added: Number of records added in this run
+            records_updated: Number of records updated in this run
+
+        Side effects:
+            Appends row to "Runs" sheet in Excel workbook
+        """
+        from datetime import datetime
+        from productplan_api_tools import config
+
+        # Get runs sheet name from config
+        runs_sheet_name = config.get_runs_sheet_name()
+
+        # Get current timestamp in UTC
+        timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+
+        # Create DataFrame for this run
+        run_data = pd.DataFrame({
+            'type': [run_type],
+            'timestamp': [timestamp],
+            'records_added': [records_added],
+            'records_updated': [records_updated]
+        })
+
+        # Read existing Excel file or create new workbook
+        if os.path.exists(self.file_path):
+            # Load existing workbook
+            with pd.ExcelWriter(self.file_path, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
+                # Check if Runs sheet exists
+                if runs_sheet_name in writer.book.sheetnames:
+                    # Read existing runs data
+                    existing_runs = pd.read_excel(self.file_path, sheet_name=runs_sheet_name)
+                    # Append new run
+                    combined_runs = pd.concat([existing_runs, run_data], ignore_index=True)
+                else:
+                    # First run - just use new data
+                    combined_runs = run_data
+
+                # Write to Runs sheet
+                combined_runs.to_excel(writer, sheet_name=runs_sheet_name, index=False)
+        else:
+            # File doesn't exist yet - this shouldn't happen in normal flow
+            # but handle it gracefully
+            with pd.ExcelWriter(self.file_path, engine='openpyxl') as writer:
+                run_data.to_excel(writer, sheet_name=runs_sheet_name, index=False)
 
 
 class GoogleSheetsSLAStorage:
@@ -421,6 +491,52 @@ class GoogleSheetsSLAStorage:
             Full URL to Google Sheets document
         """
         return f"https://docs.google.com/spreadsheets/d/{self.sheet_id}"
+
+    def record_run(self, run_type: str, records_added: int, records_updated: int) -> None:
+        """
+        Record a run (init or update) in the Runs tracking sheet
+
+        Appends a new row to the Runs sheet with execution details.
+        Creates the Runs sheet if it doesn't exist.
+
+        Args:
+            run_type: Type of run ("init" or "update")
+            records_added: Number of records added in this run
+            records_updated: Number of records updated in this run
+
+        Side effects:
+            Appends row to Runs sheet in Google Sheets document
+        """
+        from datetime import datetime
+        from productplan_api_tools import config
+
+        # Get runs sheet name from config
+        runs_sheet_name = config.get_runs_sheet_name()
+
+        # Get current timestamp in UTC
+        timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+
+        # Create run record
+        run_record = [run_type, timestamp, records_added, records_updated]
+
+        # Try to access Runs sheet, create if doesn't exist
+        try:
+            runs_sheet = self._spreadsheet.worksheet(runs_sheet_name)
+        except gspread.exceptions.WorksheetNotFound:
+            # Create Runs sheet with header row
+            runs_sheet = self._spreadsheet.add_worksheet(
+                title=runs_sheet_name,
+                rows=100,  # Start with 100 rows
+                cols=4     # 4 columns: type, timestamp, records_added, records_updated
+            )
+            # Add header row
+            header = ['type', 'timestamp', 'records_added', 'records_updated']
+            runs_sheet.append_row(header)
+            # Format header row (bold)
+            runs_sheet.format('1:1', {'textFormat': {'bold': True}})
+
+        # Append the run record
+        runs_sheet.append_row(run_record)
 
 
 def create_storage(output_path: Optional[str] = None, output_type: str = "auto") -> SLAStorage:

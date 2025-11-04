@@ -376,3 +376,247 @@ class TestExcelSLAStorage:
             "Math symbols: + - * / = < >",
             "Special chars: @#$%^&*()"
         ]
+
+    def test_record_run_creates_runs_sheet_on_first_call(self, temp_excel_file, sample_dataframe):
+        """Test that record_run() creates Runs sheet on first call"""
+        storage = ExcelSLAStorage(temp_excel_file)
+
+        # Write main data first
+        storage.write(sample_dataframe)
+
+        # Record a run
+        storage.record_run('init', records_added=3, records_updated=0)
+
+        # Read the Runs sheet
+        runs_df = pd.read_excel(temp_excel_file, sheet_name='Runs')
+
+        # Verify structure
+        assert list(runs_df.columns) == ['type', 'timestamp', 'records_added', 'records_updated']
+        assert len(runs_df) == 1
+
+        # Verify data
+        assert runs_df.loc[0, 'type'] == 'init'
+        assert runs_df.loc[0, 'records_added'] == 3
+        assert runs_df.loc[0, 'records_updated'] == 0
+
+        # Verify timestamp format (YYYY-MM-DD HH:MM:SS)
+        timestamp = runs_df.loc[0, 'timestamp']
+        assert isinstance(timestamp, str)
+        assert len(timestamp) == 19  # "YYYY-MM-DD HH:MM:SS" is 19 chars
+        assert timestamp[4] == '-'
+        assert timestamp[7] == '-'
+        assert timestamp[10] == ' '
+        assert timestamp[13] == ':'
+        assert timestamp[16] == ':'
+
+    def test_record_run_appends_to_existing_runs_sheet(self, temp_excel_file, sample_dataframe):
+        """Test that record_run() appends to existing Runs sheet"""
+        storage = ExcelSLAStorage(temp_excel_file)
+
+        # Write main data first
+        storage.write(sample_dataframe)
+
+        # Record multiple runs
+        storage.record_run('init', records_added=3, records_updated=0)
+        storage.record_run('update', records_added=1, records_updated=2)
+        storage.record_run('update', records_added=0, records_updated=3)
+
+        # Read the Runs sheet
+        runs_df = pd.read_excel(temp_excel_file, sheet_name='Runs')
+
+        # Verify all runs are recorded
+        assert len(runs_df) == 3
+
+        # Verify first run
+        assert runs_df.loc[0, 'type'] == 'init'
+        assert runs_df.loc[0, 'records_added'] == 3
+        assert runs_df.loc[0, 'records_updated'] == 0
+
+        # Verify second run
+        assert runs_df.loc[1, 'type'] == 'update'
+        assert runs_df.loc[1, 'records_added'] == 1
+        assert runs_df.loc[1, 'records_updated'] == 2
+
+        # Verify third run
+        assert runs_df.loc[2, 'type'] == 'update'
+        assert runs_df.loc[2, 'records_added'] == 0
+        assert runs_df.loc[2, 'records_updated'] == 3
+
+    def test_record_run_preserves_main_data_sheet(self, temp_excel_file, sample_dataframe):
+        """Test that record_run() doesn't affect the main SLA Tracking sheet"""
+        storage = ExcelSLAStorage(temp_excel_file)
+
+        # Write main data
+        storage.write(sample_dataframe)
+
+        # Read main data to compare later
+        df_before = storage.read()
+
+        # Record a run
+        storage.record_run('init', records_added=3, records_updated=0)
+
+        # Read main data again
+        df_after = storage.read()
+
+        # Verify main data is unchanged
+        assert len(df_before) == len(df_after)
+        assert list(df_before.columns) == list(df_after.columns)
+        assert df_before['id'].tolist() == df_after['id'].tolist()
+        assert df_before['name'].tolist() == df_after['name'].tolist()
+
+    def test_record_run_with_new_file_creates_both_sheets(self, temp_excel_file):
+        """Test that record_run() works even when called on a new file (shouldn't normally happen)"""
+        # Delete temp file to ensure it doesn't exist
+        if os.path.exists(temp_excel_file):
+            os.remove(temp_excel_file)
+
+        storage = ExcelSLAStorage(temp_excel_file)
+
+        # Record a run on a non-existent file (edge case)
+        storage.record_run('init', records_added=5, records_updated=0)
+
+        # Verify file was created with Runs sheet
+        assert os.path.exists(temp_excel_file)
+        runs_df = pd.read_excel(temp_excel_file, sheet_name='Runs')
+
+        # Verify data
+        assert len(runs_df) == 1
+        assert runs_df.loc[0, 'type'] == 'init'
+        assert runs_df.loc[0, 'records_added'] == 5
+        assert runs_df.loc[0, 'records_updated'] == 0
+
+    def test_record_run_timestamp_is_utc_format(self, temp_excel_file, sample_dataframe):
+        """Test that record_run() uses UTC timestamp format"""
+        storage = ExcelSLAStorage(temp_excel_file)
+        storage.write(sample_dataframe)
+
+        # Record a run
+        storage.record_run('init', records_added=1, records_updated=0)
+
+        # Read runs sheet
+        runs_df = pd.read_excel(temp_excel_file, sheet_name='Runs')
+
+        # Verify timestamp is a valid datetime string
+        timestamp_str = runs_df.loc[0, 'timestamp']
+
+        # Parse timestamp to verify it's valid
+        from datetime import datetime as dt
+        parsed = dt.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+
+        # Verify it's close to current UTC time (within 10 seconds)
+        from datetime import datetime
+        now_utc = datetime.utcnow()
+        time_diff = abs((now_utc - parsed).total_seconds())
+        assert time_diff < 10, f"Timestamp {timestamp_str} is not close to current UTC time"
+
+    def test_record_run_with_zero_counts(self, temp_excel_file, sample_dataframe):
+        """Test that record_run() handles zero counts correctly"""
+        storage = ExcelSLAStorage(temp_excel_file)
+        storage.write(sample_dataframe)
+
+        # Record run with zero counts
+        storage.record_run('update', records_added=0, records_updated=0)
+
+        # Read runs sheet
+        runs_df = pd.read_excel(temp_excel_file, sheet_name='Runs')
+
+        # Verify zeros are preserved
+        assert runs_df.loc[0, 'records_added'] == 0
+        assert runs_df.loc[0, 'records_updated'] == 0
+
+    def test_record_run_with_large_counts(self, temp_excel_file, sample_dataframe):
+        """Test that record_run() handles large record counts"""
+        storage = ExcelSLAStorage(temp_excel_file)
+        storage.write(sample_dataframe)
+
+        # Record run with large counts
+        storage.record_run('init', records_added=9999, records_updated=8888)
+
+        # Read runs sheet
+        runs_df = pd.read_excel(temp_excel_file, sheet_name='Runs')
+
+        # Verify large numbers are preserved
+        assert runs_df.loc[0, 'records_added'] == 9999
+        assert runs_df.loc[0, 'records_updated'] == 8888
+
+    def test_write_preserves_runs_sheet_after_record_run(self, temp_excel_file, sample_dataframe):
+        """CRITICAL: Test that write() preserves Runs sheet (regression test for bug fix)"""
+        storage = ExcelSLAStorage(temp_excel_file)
+
+        # Initial write and record run
+        storage.write(sample_dataframe)
+        storage.record_run('init', records_added=3, records_updated=0)
+
+        # Verify Runs sheet exists with 1 row
+        runs_df = pd.read_excel(temp_excel_file, sheet_name='Runs')
+        assert len(runs_df) == 1
+        assert runs_df.loc[0, 'type'] == 'init'
+
+        # Now call write() again (simulating sla_update workflow)
+        # This should NOT destroy the Runs sheet
+        modified_data = sample_dataframe.copy()
+        modified_data.loc[0, 'name'] = 'Modified Idea'
+        storage.write(modified_data)
+
+        # Verify Runs sheet STILL exists with original data
+        runs_df_after = pd.read_excel(temp_excel_file, sheet_name='Runs')
+        assert len(runs_df_after) == 1, "Runs sheet was destroyed by write()!"
+        assert runs_df_after.loc[0, 'type'] == 'init'
+        assert runs_df_after.loc[0, 'records_added'] == 3
+
+        # Verify main data was updated
+        main_df = storage.read()
+        assert main_df.loc[0, 'name'] == 'Modified Idea'
+
+    def test_write_then_record_run_then_write_preserves_all_runs(self, temp_excel_file, sample_dataframe):
+        """Test realistic workflow: write, record, write, record - all runs preserved"""
+        storage = ExcelSLAStorage(temp_excel_file)
+
+        # Step 1: Initial write + record (simulating sla-init)
+        storage.write(sample_dataframe)
+        storage.record_run('init', records_added=3, records_updated=0)
+
+        # Step 2: Update write + record (simulating sla-update)
+        modified_data = sample_dataframe.copy()
+        modified_data.loc[0, 'name'] = 'Updated 1'
+        storage.write(modified_data)
+        storage.record_run('update', records_added=1, records_updated=2)
+
+        # Step 3: Another update
+        modified_data.loc[0, 'name'] = 'Updated 2'
+        storage.write(modified_data)
+        storage.record_run('update', records_added=0, records_updated=1)
+
+        # Verify all 3 runs are preserved
+        runs_df = pd.read_excel(temp_excel_file, sheet_name='Runs')
+        assert len(runs_df) == 3, f"Expected 3 runs, got {len(runs_df)}"
+        assert runs_df.loc[0, 'type'] == 'init'
+        assert runs_df.loc[1, 'type'] == 'update'
+        assert runs_df.loc[2, 'type'] == 'update'
+
+    def test_record_run_timestamps_are_sequential(self, temp_excel_file, sample_dataframe):
+        """Test that multiple runs have sequential (non-decreasing) timestamps"""
+        import time
+        storage = ExcelSLAStorage(temp_excel_file)
+        storage.write(sample_dataframe)
+
+        # Record three runs with small delays
+        storage.record_run('init', records_added=1, records_updated=0)
+        time.sleep(0.1)  # Small delay to ensure different timestamps
+        storage.record_run('update', records_added=1, records_updated=0)
+        time.sleep(0.1)
+        storage.record_run('update', records_added=0, records_updated=1)
+
+        # Read and verify timestamps
+        runs_df = pd.read_excel(temp_excel_file, sheet_name='Runs')
+        assert len(runs_df) == 3
+
+        # Parse timestamps
+        from datetime import datetime as dt
+        ts1 = dt.strptime(runs_df.loc[0, 'timestamp'], '%Y-%m-%d %H:%M:%S')
+        ts2 = dt.strptime(runs_df.loc[1, 'timestamp'], '%Y-%m-%d %H:%M:%S')
+        ts3 = dt.strptime(runs_df.loc[2, 'timestamp'], '%Y-%m-%d %H:%M:%S')
+
+        # Verify sequential ordering
+        assert ts2 >= ts1, f"Second timestamp {ts2} is before first {ts1}"
+        assert ts3 >= ts2, f"Third timestamp {ts3} is before second {ts2}"

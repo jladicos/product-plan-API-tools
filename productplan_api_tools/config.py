@@ -130,5 +130,17 @@ def get_google_sheets_config() -> Optional[Dict[str, str]]:
     }
 
 
+def get_runs_sheet_name() -> str:
+    """
+    Get the name of the Runs tracking sheet/tab
+
+    This sheet tracks audit trail for sla-init and sla-update executions.
+
+    Returns:
+        Sheet name for runs tracking (default: "Runs")
+    """
+    return os.getenv('GOOGLE_SHEET_RUNS_NAME', 'Runs').strip() or 'Runs'
+
+
 # Load environment on module import (fail fast)
 _load_environment()

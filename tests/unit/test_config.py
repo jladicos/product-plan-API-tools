@@ -248,3 +248,53 @@ class TestConfigModule:
             assert 'Configuration file not found' in str(exc_info.value)
             assert 'env/.env' in str(exc_info.value)
             assert 'env/.env.sample' in str(exc_info.value)
+
+    def test_get_runs_sheet_name_returns_default_when_not_set(self):
+        """Test get_runs_sheet_name() returns 'Runs' when not configured"""
+        with patch.dict(os.environ, {}, clear=True):
+            import importlib
+            import productplan_api_tools.config as config
+            importlib.reload(config)
+
+            sheet_name = config.get_runs_sheet_name()
+            assert sheet_name == 'Runs'
+
+    def test_get_runs_sheet_name_returns_custom_value(self):
+        """Test get_runs_sheet_name() returns custom value from environment"""
+        with patch.dict(os.environ, {'GOOGLE_SHEET_RUNS_NAME': 'Audit Log'}):
+            import importlib
+            import productplan_api_tools.config as config
+            importlib.reload(config)
+
+            sheet_name = config.get_runs_sheet_name()
+            assert sheet_name == 'Audit Log'
+
+    def test_get_runs_sheet_name_strips_whitespace(self):
+        """Test get_runs_sheet_name() strips leading/trailing whitespace"""
+        with patch.dict(os.environ, {'GOOGLE_SHEET_RUNS_NAME': '  Custom Runs  '}):
+            import importlib
+            import productplan_api_tools.config as config
+            importlib.reload(config)
+
+            sheet_name = config.get_runs_sheet_name()
+            assert sheet_name == 'Custom Runs'
+
+    def test_get_runs_sheet_name_returns_default_when_empty_string(self):
+        """Test get_runs_sheet_name() returns 'Runs' when set to empty string"""
+        with patch.dict(os.environ, {'GOOGLE_SHEET_RUNS_NAME': ''}):
+            import importlib
+            import productplan_api_tools.config as config
+            importlib.reload(config)
+
+            sheet_name = config.get_runs_sheet_name()
+            assert sheet_name == 'Runs'
+
+    def test_get_runs_sheet_name_returns_default_when_only_whitespace(self):
+        """Test get_runs_sheet_name() returns 'Runs' when set to only whitespace"""
+        with patch.dict(os.environ, {'GOOGLE_SHEET_RUNS_NAME': '   '}):
+            import importlib
+            import productplan_api_tools.config as config
+            importlib.reload(config)
+
+            sheet_name = config.get_runs_sheet_name()
+            assert sheet_name == 'Runs'

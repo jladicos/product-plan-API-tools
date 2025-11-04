@@ -1681,3 +1681,244 @@ class TestSLAUpdate:
             assert row['Engineering'] == 1, "Engineering should be 1 (idea uses this team)"
             assert row['Marketing'] == 0, "Marketing should be 0 (idea doesn't use this team)"
             assert row['Product'] == 0, "Product should be 0 (idea no longer uses this team)"
+
+
+class TestSLARunTracking:
+    """Integration tests for run tracking in sla_init and sla_update"""
+
+
+    @pytest.fixture
+    def temp_output_file(self):
+        """Create a temporary output file path (without creating the file)"""
+        import tempfile
+        fd, file_path = tempfile.mkstemp(suffix=".xlsx")
+        os.close(fd)
+        os.remove(file_path)
+        yield file_path
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+    def test_sla_init_calls_record_run_with_correct_params(self, temp_output_file):
+        """Test that sla_init() calls storage.record_run() with correct parameters"""
+        idea = {
+            'id': 1,
+            'name': 'Test Idea',
+            'description': 'Test description',
+            'customer': 'Test Customer',
+            'source_name': 'John Doe',
+            'source_email': 'john@example.com',
+            'created_at': '2025-10-01T10:00:00Z',
+            'updated_at': '2025-10-05T10:00:00Z',
+            'idea_status': 'On deck',
+            'location_status': 'visible',
+            'custom_dropdown_fields': [],
+            'custom_text_fields': [],
+            'tags': [],
+            'opportunity_ids': [],
+            'idea_form_id': None,
+            'team_ids': []
+        }
+
+        team_mapping = {}
+
+        with patch('productplan_api_tools.sla.manager.IdeasResource') as MockIdeasResource, \
+             patch('productplan_api_tools.sla.manager.TeamsResource') as MockTeamsResource, \
+             patch('productplan_api_tools.sla.manager.config') as mock_config:
+
+            mock_ideas_instance = MockIdeasResource.return_value
+            mock_ideas_instance.fetch_enhanced.return_value = [idea]
+
+            mock_teams_instance = MockTeamsResource.return_value
+            mock_teams_instance.build_id_to_name_mapping.return_value = team_mapping
+
+            mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
+
+            # Create storage with mocked record_run
+            storage = ExcelSLAStorage(temp_output_file)
+            with patch.object(storage, 'record_run') as mock_record_run:
+                # Call sla_init()
+                sla_init(storage, "fake_token")
+
+                # Verify record_run was called
+                mock_record_run.assert_called_once()
+
+                # Verify it was called with type='init', records_added=1, records_updated=0
+                call_args = mock_record_run.call_args
+                assert call_args[0][0] == 'init', "First arg should be 'init'"
+                assert call_args[1]['records_added'] == 1, "Should record 1 added idea"
+                assert call_args[1]['records_updated'] == 0, "Should record 0 updated (init has no updates)"
+
+    def test_sla_update_calls_record_run_with_added_and_updated_counts(self, temp_output_file):
+        """Test that sla_update() calls storage.record_run() with correct added/updated counts"""
+        # Create initial file with 1 idea
+        initial_idea = {
+            'id': 1,
+            'name': 'Existing Idea',
+            'description': 'Test',
+            'customer': 'Customer',
+            'source_name': 'John',
+            'source_email': 'john@example.com',
+            'created_at': '2025-10-01T10:00:00Z',
+            'updated_at': '2025-10-05T10:00:00Z',
+            'idea_status': 'On deck',
+            'location_status': 'visible',
+            'custom_dropdown_fields': [],
+            'custom_text_fields': [],
+            'tags': [],
+            'opportunity_ids': [],
+            'idea_form_id': None,
+            'team_ids': []
+        }
+
+        storage = ExcelSLAStorage(temp_output_file)
+        
+        # Set up initial state
+        with patch('productplan_api_tools.sla.manager.IdeasResource') as MockIdeasResource, \
+             patch('productplan_api_tools.sla.manager.TeamsResource') as MockTeamsResource, \
+             patch('productplan_api_tools.sla.manager.config') as mock_config:
+
+            mock_ideas_instance = MockIdeasResource.return_value
+            mock_ideas_instance.fetch_enhanced.return_value = [initial_idea]
+
+            mock_teams_instance = MockTeamsResource.return_value
+            mock_teams_instance.build_id_to_name_mapping.return_value = {}
+
+            mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
+
+            sla_init(storage, "fake_token")
+
+        # Now update: add 2 new ideas, update 1 existing
+        updated_idea = initial_idea.copy()
+        updated_idea['name'] = 'Updated Name'  # Changed
+        updated_idea['updated_at'] = '2025-10-10T10:00:00Z'  # Changed
+
+        new_idea1 = {
+            'id': 2,
+            'name': 'New Idea 1',
+            'description': 'Test',
+            'customer': 'Customer',
+            'source_name': 'Jane',
+            'source_email': 'jane@example.com',
+            'created_at': '2025-10-08T10:00:00Z',
+            'updated_at': '2025-10-08T10:00:00Z',
+            'idea_status': 'On deck',
+            'location_status': 'visible',
+            'custom_dropdown_fields': [],
+            'custom_text_fields': [],
+            'tags': [],
+            'opportunity_ids': [],
+            'idea_form_id': None,
+            'team_ids': []
+        }
+
+        new_idea2 = {
+            'id': 3,
+            'name': 'New Idea 2',
+            'description': 'Test',
+            'customer': 'Customer',
+            'source_name': 'Bob',
+            'source_email': 'bob@example.com',
+            'created_at': '2025-10-09T10:00:00Z',
+            'updated_at': '2025-10-09T10:00:00Z',
+            'idea_status': 'On deck',
+            'location_status': 'visible',
+            'custom_dropdown_fields': [],
+            'custom_text_fields': [],
+            'tags': [],
+            'opportunity_ids': [],
+            'idea_form_id': None,
+            'team_ids': []
+        }
+
+        with patch('productplan_api_tools.sla.manager.IdeasResource') as MockIdeasResource, \
+             patch('productplan_api_tools.sla.manager.TeamsResource') as MockTeamsResource, \
+             patch('productplan_api_tools.sla.manager.config') as mock_config:
+
+            mock_ideas_instance = MockIdeasResource.return_value
+            # Return all 3 ideas: 1 updated, 2 new
+            mock_ideas_instance.fetch_enhanced.return_value = [updated_idea, new_idea1, new_idea2]
+
+            mock_teams_instance = MockTeamsResource.return_value
+            mock_teams_instance.build_id_to_name_mapping.return_value = {}
+
+            mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
+
+            # Mock record_run to verify it's called
+            with patch.object(storage, 'record_run') as mock_record_run:
+                # Call sla_update()
+                sla_update(storage, "fake_token")
+
+                # Verify record_run was called
+                mock_record_run.assert_called_once()
+
+                # Verify it was called with type='update', records_added=2, records_updated=1
+                call_args = mock_record_run.call_args
+                assert call_args[0][0] == 'update', "First arg should be 'update'"
+                assert call_args[1]['records_added'] == 2, "Should record 2 added ideas"
+                assert call_args[1]['records_updated'] == 1, "Should record 1 updated idea"
+
+    def test_sla_update_calls_record_run_with_zero_changes(self, temp_output_file):
+        """Test that sla_update() still calls record_run() even when no changes"""
+        initial_idea = {
+            'id': 1,
+            'name': 'Existing Idea',
+            'description': 'Test',
+            'customer': 'Customer',
+            'source_name': 'John',
+            'source_email': 'john@example.com',
+            'created_at': '2025-10-01T10:00:00Z',
+            'updated_at': '2025-10-05T10:00:00Z',
+            'idea_status': 'On deck',
+            'location_status': 'visible',
+            'custom_dropdown_fields': [],
+            'custom_text_fields': [],
+            'tags': [],
+            'opportunity_ids': [],
+            'idea_form_id': None,
+            'team_ids': []
+        }
+
+        storage = ExcelSLAStorage(temp_output_file)
+        
+        # Set up initial state
+        with patch('productplan_api_tools.sla.manager.IdeasResource') as MockIdeasResource, \
+             patch('productplan_api_tools.sla.manager.TeamsResource') as MockTeamsResource, \
+             patch('productplan_api_tools.sla.manager.config') as mock_config:
+
+            mock_ideas_instance = MockIdeasResource.return_value
+            mock_ideas_instance.fetch_enhanced.return_value = [initial_idea]
+
+            mock_teams_instance = MockTeamsResource.return_value
+            mock_teams_instance.build_id_to_name_mapping.return_value = {}
+
+            mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
+
+            sla_init(storage, "fake_token")
+
+        # Update with no changes
+        with patch('productplan_api_tools.sla.manager.IdeasResource') as MockIdeasResource, \
+             patch('productplan_api_tools.sla.manager.TeamsResource') as MockTeamsResource, \
+             patch('productplan_api_tools.sla.manager.config') as mock_config:
+
+            mock_ideas_instance = MockIdeasResource.return_value
+            # Return same idea unchanged
+            mock_ideas_instance.fetch_enhanced.return_value = [initial_idea]
+
+            mock_teams_instance = MockTeamsResource.return_value
+            mock_teams_instance.build_id_to_name_mapping.return_value = {}
+
+            mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
+
+            # Mock record_run to verify it's called
+            with patch.object(storage, 'record_run') as mock_record_run:
+                # Call sla_update()
+                sla_update(storage, "fake_token")
+
+                # Verify record_run was called even with no changes
+                mock_record_run.assert_called_once()
+
+                # Verify it was called with zeros
+                call_args = mock_record_run.call_args
+                assert call_args[0][0] == 'update', "First arg should be 'update'"
+                assert call_args[1]['records_added'] == 0, "Should record 0 added ideas"
+                assert call_args[1]['records_updated'] == 0, "Should record 0 updated ideas"

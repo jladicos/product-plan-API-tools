@@ -783,6 +783,301 @@ class TestGoogleSheetsSLAStorage(unittest.TestCase):
         # Verify format was called (header bold)
         mock_worksheet.format.assert_called_once()
 
+    @patch('productplan_api_tools.sla.storage.GSPREAD_AVAILABLE', True)
+    @patch('productplan_api_tools.sla.storage.gspread')
+    @patch('productplan_api_tools.sla.storage.Credentials')
+    @patch('os.path.exists')
+    @patch('productplan_api_tools.sla.storage.config')
+    def test_record_run_creates_runs_sheet_on_first_call(
+        self, mock_config, mock_exists, mock_creds, mock_gspread
+    ):
+        """Test that record_run() creates Runs sheet on first call"""
+        # Setup mocks
+        mock_exists.return_value = True
+        mock_creds_instance = Mock()
+        mock_creds.from_service_account_file.return_value = mock_creds_instance
+
+        mock_client = Mock()
+        mock_spreadsheet = Mock()
+        mock_worksheet = Mock()
+        mock_gspread.authorize.return_value = mock_client
+        mock_client.open_by_key.return_value = mock_spreadsheet
+        mock_spreadsheet.worksheet.return_value = mock_worksheet
+
+        # Mock config to return runs sheet name
+        mock_config.get_runs_sheet_name.return_value = 'Runs'
+
+        # Mock WorksheetNotFound exception when trying to access Runs sheet
+        mock_gspread.exceptions = MagicMock()
+        mock_gspread.exceptions.WorksheetNotFound = Exception
+
+        # First call to worksheet() for Runs sheet raises WorksheetNotFound
+        mock_new_runs_sheet = Mock()
+        mock_spreadsheet.worksheet.side_effect = [
+            mock_worksheet,  # Initial validation call for main sheet
+            Exception("Worksheet not found"),  # Runs sheet doesn't exist
+        ]
+        mock_spreadsheet.add_worksheet.return_value = mock_new_runs_sheet
+
+        # Create storage
+        storage = GoogleSheetsSLAStorage(
+            self.credentials_file,
+            self.sheet_id,
+            self.sheet_name
+        )
+
+        # Reset side effects after init
+        mock_spreadsheet.worksheet.side_effect = [Exception("Worksheet not found")]
+
+        # Record a run
+        storage.record_run('init', records_added=5, records_updated=0)
+
+        # Verify add_worksheet was called to create Runs sheet
+        mock_spreadsheet.add_worksheet.assert_called_once_with(
+            title='Runs',
+            rows=100,
+            cols=4
+        )
+
+        # Verify header row was added
+        header_call = mock_new_runs_sheet.append_row.call_args_list[0]
+        self.assertEqual(header_call[0][0], ['type', 'timestamp', 'records_added', 'records_updated'])
+
+        # Verify data row was added
+        data_call = mock_new_runs_sheet.append_row.call_args_list[1]
+        data_row = data_call[0][0]
+        self.assertEqual(data_row[0], 'init')
+        self.assertEqual(data_row[2], 5)
+        self.assertEqual(data_row[3], 0)
+
+        # Verify header formatting (bold)
+        mock_new_runs_sheet.format.assert_called_once_with(
+            '1:1',
+            {'textFormat': {'bold': True}}
+        )
+
+    @patch('productplan_api_tools.sla.storage.GSPREAD_AVAILABLE', True)
+    @patch('productplan_api_tools.sla.storage.gspread')
+    @patch('productplan_api_tools.sla.storage.Credentials')
+    @patch('os.path.exists')
+    @patch('productplan_api_tools.sla.storage.config')
+    def test_record_run_appends_to_existing_runs_sheet(
+        self, mock_config, mock_exists, mock_creds, mock_gspread
+    ):
+        """Test that record_run() appends to existing Runs sheet"""
+        # Setup mocks
+        mock_exists.return_value = True
+        mock_creds_instance = Mock()
+        mock_creds.from_service_account_file.return_value = mock_creds_instance
+
+        mock_client = Mock()
+        mock_spreadsheet = Mock()
+        mock_worksheet = Mock()
+        mock_runs_sheet = Mock()
+        mock_gspread.authorize.return_value = mock_client
+        mock_client.open_by_key.return_value = mock_spreadsheet
+
+        # Mock config
+        mock_config.get_runs_sheet_name.return_value = 'Runs'
+
+        # Setup worksheet side effects - return runs sheet when requested
+        def worksheet_side_effect(name):
+            if name == 'Runs':
+                return mock_runs_sheet
+            return mock_worksheet
+
+        mock_spreadsheet.worksheet.side_effect = worksheet_side_effect
+
+        # Create storage
+        storage = GoogleSheetsSLAStorage(
+            self.credentials_file,
+            self.sheet_id,
+            self.sheet_name
+        )
+
+        # Record multiple runs
+        storage.record_run('init', records_added=3, records_updated=0)
+        storage.record_run('update', records_added=1, records_updated=2)
+        storage.record_run('update', records_added=0, records_updated=3)
+
+        # Verify append_row was called 3 times
+        self.assertEqual(mock_runs_sheet.append_row.call_count, 3)
+
+        # Verify first run data
+        call1 = mock_runs_sheet.append_row.call_args_list[0][0][0]
+        self.assertEqual(call1[0], 'init')
+        self.assertEqual(call1[2], 3)
+        self.assertEqual(call1[3], 0)
+
+        # Verify second run data
+        call2 = mock_runs_sheet.append_row.call_args_list[1][0][0]
+        self.assertEqual(call2[0], 'update')
+        self.assertEqual(call2[2], 1)
+        self.assertEqual(call2[3], 2)
+
+        # Verify third run data
+        call3 = mock_runs_sheet.append_row.call_args_list[2][0][0]
+        self.assertEqual(call3[0], 'update')
+        self.assertEqual(call3[2], 0)
+        self.assertEqual(call3[3], 3)
+
+    @patch('productplan_api_tools.sla.storage.GSPREAD_AVAILABLE', True)
+    @patch('productplan_api_tools.sla.storage.gspread')
+    @patch('productplan_api_tools.sla.storage.Credentials')
+    @patch('os.path.exists')
+    @patch('productplan_api_tools.sla.storage.config')
+    def test_record_run_timestamp_is_utc_format(
+        self, mock_config, mock_exists, mock_creds, mock_gspread
+    ):
+        """Test that record_run() uses UTC timestamp format"""
+        # Setup mocks
+        mock_exists.return_value = True
+        mock_creds_instance = Mock()
+        mock_creds.from_service_account_file.return_value = mock_creds_instance
+
+        mock_client = Mock()
+        mock_spreadsheet = Mock()
+        mock_worksheet = Mock()
+        mock_runs_sheet = Mock()
+        mock_gspread.authorize.return_value = mock_client
+        mock_client.open_by_key.return_value = mock_spreadsheet
+
+        # Mock config
+        mock_config.get_runs_sheet_name.return_value = 'Runs'
+
+        # Setup worksheet side effects
+        def worksheet_side_effect(name):
+            if name == 'Runs':
+                return mock_runs_sheet
+            return mock_worksheet
+
+        mock_spreadsheet.worksheet.side_effect = worksheet_side_effect
+
+        # Create storage
+        storage = GoogleSheetsSLAStorage(
+            self.credentials_file,
+            self.sheet_id,
+            self.sheet_name
+        )
+
+        # Record a run
+        storage.record_run('init', records_added=1, records_updated=0)
+
+        # Get the timestamp that was written
+        call_args = mock_runs_sheet.append_row.call_args_list[0][0][0]
+        timestamp_str = call_args[1]
+
+        # Verify timestamp format (YYYY-MM-DD HH:MM:SS)
+        self.assertEqual(len(timestamp_str), 19)
+        self.assertEqual(timestamp_str[4], '-')
+        self.assertEqual(timestamp_str[7], '-')
+        self.assertEqual(timestamp_str[10], ' ')
+        self.assertEqual(timestamp_str[13], ':')
+        self.assertEqual(timestamp_str[16], ':')
+
+        # Parse timestamp to verify it's valid
+        from datetime import datetime as dt
+        parsed = dt.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+
+        # Verify it's close to current UTC time (within 10 seconds)
+        now_utc = datetime.utcnow()
+        time_diff = abs((now_utc - parsed).total_seconds())
+        self.assertLess(time_diff, 10, f"Timestamp {timestamp_str} is not close to current UTC time")
+
+    @patch('productplan_api_tools.sla.storage.GSPREAD_AVAILABLE', True)
+    @patch('productplan_api_tools.sla.storage.gspread')
+    @patch('productplan_api_tools.sla.storage.Credentials')
+    @patch('os.path.exists')
+    @patch('productplan_api_tools.sla.storage.config')
+    def test_record_run_with_zero_counts(
+        self, mock_config, mock_exists, mock_creds, mock_gspread
+    ):
+        """Test that record_run() handles zero counts correctly"""
+        # Setup mocks
+        mock_exists.return_value = True
+        mock_creds_instance = Mock()
+        mock_creds.from_service_account_file.return_value = mock_creds_instance
+
+        mock_client = Mock()
+        mock_spreadsheet = Mock()
+        mock_worksheet = Mock()
+        mock_runs_sheet = Mock()
+        mock_gspread.authorize.return_value = mock_client
+        mock_client.open_by_key.return_value = mock_spreadsheet
+
+        # Mock config
+        mock_config.get_runs_sheet_name.return_value = 'Runs'
+
+        # Setup worksheet side effects
+        def worksheet_side_effect(name):
+            if name == 'Runs':
+                return mock_runs_sheet
+            return mock_worksheet
+
+        mock_spreadsheet.worksheet.side_effect = worksheet_side_effect
+
+        # Create storage
+        storage = GoogleSheetsSLAStorage(
+            self.credentials_file,
+            self.sheet_id,
+            self.sheet_name
+        )
+
+        # Record run with zero counts
+        storage.record_run('update', records_added=0, records_updated=0)
+
+        # Verify zeros are preserved
+        call_args = mock_runs_sheet.append_row.call_args_list[0][0][0]
+        self.assertEqual(call_args[2], 0)  # records_added
+        self.assertEqual(call_args[3], 0)  # records_updated
+
+    @patch('productplan_api_tools.sla.storage.GSPREAD_AVAILABLE', True)
+    @patch('productplan_api_tools.sla.storage.gspread')
+    @patch('productplan_api_tools.sla.storage.Credentials')
+    @patch('os.path.exists')
+    @patch('productplan_api_tools.sla.storage.config')
+    def test_record_run_with_large_counts(
+        self, mock_config, mock_exists, mock_creds, mock_gspread
+    ):
+        """Test that record_run() handles large record counts"""
+        # Setup mocks
+        mock_exists.return_value = True
+        mock_creds_instance = Mock()
+        mock_creds.from_service_account_file.return_value = mock_creds_instance
+
+        mock_client = Mock()
+        mock_spreadsheet = Mock()
+        mock_worksheet = Mock()
+        mock_runs_sheet = Mock()
+        mock_gspread.authorize.return_value = mock_client
+        mock_client.open_by_key.return_value = mock_spreadsheet
+
+        # Mock config
+        mock_config.get_runs_sheet_name.return_value = 'Runs'
+
+        # Setup worksheet side effects
+        def worksheet_side_effect(name):
+            if name == 'Runs':
+                return mock_runs_sheet
+            return mock_worksheet
+
+        mock_spreadsheet.worksheet.side_effect = worksheet_side_effect
+
+        # Create storage
+        storage = GoogleSheetsSLAStorage(
+            self.credentials_file,
+            self.sheet_id,
+            self.sheet_name
+        )
+
+        # Record run with large counts
+        storage.record_run('init', records_added=9999, records_updated=8888)
+
+        # Verify large numbers are preserved
+        call_args = mock_runs_sheet.append_row.call_args_list[0][0][0]
+        self.assertEqual(call_args[2], 9999)  # records_added
+        self.assertEqual(call_args[3], 8888)  # records_updated
+
 
 class TestCreateStorageFactory(unittest.TestCase):
     """Tests for create_storage() factory function"""

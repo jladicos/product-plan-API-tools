@@ -432,8 +432,9 @@ productplan_api_tools/
 - `Makefile` - Command interface with Docker integration
 - `Dockerfile` - Python 3.9 container, entry point: `python -m productplan_api_tools`
 - `requirements.txt` - Python dependencies (requests, pandas, openpyxl, numpy, pytest, python-dotenv, gspread)
-- `env/.env` - Environment configuration (API token, URL prefix, Google Sheets credentials) - git-ignored
+- `env/.env` - Environment configuration (API token, URL prefix, Google Sheets credentials, Runs sheet name) - git-ignored
 - `env/.env.sample` - Sample environment file with documentation
+  - `GOOGLE_SHEET_RUNS_NAME` - Optional, defaults to "Runs" - Name of sheet/tab for tracking sla-init/sla-update executions
 - `files/` - Directory for all generated output files (auto-created, git-ignored)
 - `tests/` - Comprehensive test suite (321 tests: 283 unit + 28 integration + 10 smoke)
 

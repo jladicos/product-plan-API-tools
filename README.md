@@ -296,6 +296,37 @@ The SLA tracking spreadsheet includes columns in this specific order:
 - Sorted by team ID numerically (e.g., "Team_1", "Team_2", "Team_100")
 - This ensures new teams or custom fields don't shift existing column positions
 
+#### Run Tracking and Audit Trail
+
+The SLA tracking system automatically maintains an audit trail of all executions in a separate "Runs" sheet/tab within your SLA tracking workbook.
+
+**Automatic Tracking:**
+- Every `make sla-init` and `make sla-update` execution is automatically recorded
+- Tracking occurs only for successful runs (failures are not recorded)
+- Runs sheet is auto-created on first execution if it doesn't exist
+- Works with both Excel and Google Sheets output formats
+
+**Runs Sheet Structure:**
+- `type`: Type of execution ("init" or "update")
+- `timestamp`: Execution timestamp in UTC timezone (format: YYYY-MM-DD HH:MM:SS)
+- `records_added`: Number of ideas added during this run
+- `records_updated`: Number of ideas updated during this run
+
+**UTC Timezone:**
+- **All timestamps use UTC timezone** for consistency across timezones
+- This includes timestamps in the main SLA tracking sheet (`created_at`, `updated_at`, `response_sla`, `roadmap_sla`)
+- UTC ensures reliable time tracking regardless of server location or daylight saving time
+
+**Configuration:**
+- The Runs sheet name defaults to "Runs" but can be customized via `GOOGLE_SHEET_RUNS_NAME` in `env/.env`
+- Example: `GOOGLE_SHEET_RUNS_NAME=Audit Log` to use "Audit Log" instead of "Runs"
+
+**Use Cases:**
+- Monitor execution frequency and timing
+- Verify data freshness (when was the last update?)
+- Track data growth over time (records added/updated trends)
+- Debug issues by reviewing execution history
+
 #### Filtering Rules
 
 To exclude test and development ideas, the following filters are applied:

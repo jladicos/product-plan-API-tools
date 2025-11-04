@@ -306,6 +306,9 @@ def sla_init(storage: SLAStorage, token: str) -> None:
     print(f"\nSpreadsheet created: {storage.get_file_path()}")
     print("="*60)
 
+    # Record this run in audit trail
+    storage.record_run('init', records_added=len(df), records_updated=0)
+
 
 def sla_update(storage: SLAStorage, token: str) -> None:
     """
@@ -577,3 +580,6 @@ def sla_update(storage: SLAStorage, token: str) -> None:
     print(f"  Roadmap SLA met: {roadmap_met}/{len(existing_df)} ({roadmap_met/len(existing_df)*100:.1f}%)")
 
     print("="*60)
+
+    # Record this run in audit trail
+    storage.record_run('update', records_added=added_count, records_updated=updated_count)

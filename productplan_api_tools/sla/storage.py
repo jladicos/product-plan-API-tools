@@ -6,9 +6,19 @@ Provides interface and implementations for reading/writing SLA spreadsheets.
 """
 
 import os
-from typing import Protocol
+from typing import Protocol, Optional
 import pandas as pd
 from datetime import datetime
+
+try:
+    import gspread
+    from google.oauth2.service_account import Credentials
+    GSPREAD_AVAILABLE = True
+except ImportError:
+    GSPREAD_AVAILABLE = False
+
+# Import config for factory function
+from productplan_api_tools import config
 
 
 class SLAStorage(Protocol):
@@ -154,3 +164,302 @@ class ExcelSLAStorage:
             Absolute path to Excel file
         """
         return self.file_path
+
+
+class GoogleSheetsSLAStorage:
+    """
+    Google Sheets implementation of SLA storage
+
+    Handles reading/writing SLA tracking data to Google Sheets with proper
+    date formatting and column ordering to match Excel output.
+
+    Error Handling:
+        - Fails fast on authentication errors (doesn't fallback silently)
+        - Fails fast on missing/invalid spreadsheet (clear error message)
+        - Auto-creates sheet/tab if it doesn't exist (matches Excel behavior)
+    """
+
+    def __init__(self, credentials_file: str, sheet_id: str, sheet_name: str):
+        """
+        Initialize Google Sheets storage
+
+        Args:
+            credentials_file: Path to Google service account JSON credentials
+            sheet_id: Google Sheets document ID
+            sheet_name: Name of sheet/tab within the document
+
+        Raises:
+            ImportError: If gspread or google-auth not installed
+            FileNotFoundError: If credentials file doesn't exist
+            Exception: If authentication fails or spreadsheet not accessible
+        """
+        if not GSPREAD_AVAILABLE:
+            raise ImportError(
+                "Google Sheets support requires gspread and google-auth. "
+                "Install with: pip install gspread google-auth"
+            )
+
+        if not os.path.exists(credentials_file):
+            raise FileNotFoundError(
+                f"Google credentials file not found: {credentials_file}"
+            )
+
+        self.credentials_file = credentials_file
+        self.sheet_id = sheet_id
+        self.sheet_name = sheet_name
+        self._client: Optional[gspread.Client] = None
+        self._spreadsheet: Optional[gspread.Spreadsheet] = None
+
+        # Authenticate and validate access (fail fast)
+        self._authenticate()
+
+    def _authenticate(self) -> None:
+        """
+        Authenticate with Google Sheets API and validate access
+
+        Raises:
+            Exception: If authentication fails or spreadsheet not accessible
+        """
+        try:
+            # Define the scope for Google Sheets API
+            scopes = [
+                'https://www.googleapis.com/auth/spreadsheets',
+                'https://www.googleapis.com/auth/drive'
+            ]
+
+            # Load credentials from service account file
+            creds = Credentials.from_service_account_file(
+                self.credentials_file,
+                scopes=scopes
+            )
+
+            # Create gspread client
+            self._client = gspread.authorize(creds)
+
+            # Open spreadsheet (this validates access)
+            self._spreadsheet = self._client.open_by_key(self.sheet_id)
+
+        except gspread.exceptions.SpreadsheetNotFound:
+            raise Exception(
+                f"Google Spreadsheet not found or not accessible. "
+                f"Sheet ID: {self.sheet_id}. "
+                f"Make sure the service account has access to this spreadsheet."
+            )
+        except Exception as e:
+            raise Exception(
+                f"Failed to authenticate with Google Sheets: {str(e)}"
+            )
+
+    def exists(self) -> bool:
+        """
+        Check if the sheet/tab exists in the spreadsheet
+
+        Returns:
+            True if sheet/tab exists, False otherwise
+        """
+        try:
+            self._spreadsheet.worksheet(self.sheet_name)
+            return True
+        except gspread.exceptions.WorksheetNotFound:
+            return False
+
+    def read(self) -> pd.DataFrame:
+        """
+        Read Google Sheet into DataFrame
+
+        Returns:
+            DataFrame with SLA tracking data
+
+        Raises:
+            Exception: If sheet/tab doesn't exist
+
+        Note:
+            Date columns (created_at, updated_at, response_sla, roadmap_sla)
+            are automatically parsed as datetime objects if they exist
+        """
+        try:
+            worksheet = self._spreadsheet.worksheet(self.sheet_name)
+        except gspread.exceptions.WorksheetNotFound:
+            raise Exception(
+                f"Sheet/tab '{self.sheet_name}' not found in spreadsheet. "
+                f"Available sheets: {[ws.title for ws in self._spreadsheet.worksheets()]}"
+            )
+
+        # Get all values from sheet
+        values = worksheet.get_all_values()
+
+        if not values:
+            # Empty sheet - return empty DataFrame
+            return pd.DataFrame()
+
+        # First row is header
+        headers = values[0]
+        data = values[1:]
+
+        # Create DataFrame
+        df = pd.DataFrame(data, columns=headers)
+
+        # Convert empty strings to None for proper type conversion
+        df = df.replace('', None)
+
+        # Parse date columns if they exist
+        potential_date_columns = ['created_at', 'updated_at', 'response_sla', 'roadmap_sla']
+        for col in potential_date_columns:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors='coerce')
+
+        # Convert numeric columns (id, boolean columns)
+        if 'id' in df.columns:
+            df['id'] = pd.to_numeric(df['id'], errors='coerce').astype('Int64')
+
+        # Convert boolean columns
+        boolean_columns = ['currently_meets_response_sla', 'currently_meets_roadmap_sla']
+        for col in boolean_columns:
+            if col in df.columns:
+                df[col] = df[col].map({'True': True, 'False': False, 'TRUE': True, 'FALSE': False})
+
+        return df
+
+    def write(self, df: pd.DataFrame) -> None:
+        """
+        Write DataFrame to Google Sheet with proper formatting
+
+        Behavior:
+            - Clears entire sheet/tab before writing (like Excel mode='w')
+            - Auto-creates sheet/tab if it doesn't exist
+            - Formats date columns to match Excel
+            - Auto-adjusts column widths (max 50 chars like Excel)
+
+        Args:
+            df: DataFrame to write
+
+        Features:
+            - Date columns formatted as 'yyyy-mm-dd hh:mm:ss'
+            - Boolean columns formatted properly
+            - Auto-adjusts column widths
+            - Creates sheet/tab if it doesn't exist
+        """
+        # Get or create worksheet
+        try:
+            worksheet = self._spreadsheet.worksheet(self.sheet_name)
+        except gspread.exceptions.WorksheetNotFound:
+            # Auto-create sheet/tab (matches Excel behavior of creating directories)
+            worksheet = self._spreadsheet.add_worksheet(
+                title=self.sheet_name,
+                rows=len(df) + 1,
+                cols=len(df.columns)
+            )
+
+        # Clear existing data (clear-and-rewrite behavior)
+        worksheet.clear()
+
+        # Format dates as strings for Google Sheets
+        df_copy = df.copy()
+        date_columns = ['created_at', 'updated_at', 'response_sla', 'roadmap_sla']
+        for col in date_columns:
+            if col in df_copy.columns:
+                # Convert datetime to string with Excel-like format
+                df_copy[col] = df_copy[col].apply(
+                    lambda x: x.strftime('%Y-%m-%d %H:%M:%S') if pd.notna(x) else ''
+                )
+
+        # Convert DataFrame to list of lists for gspread
+        # Include header row
+        values = [df_copy.columns.tolist()] + df_copy.fillna('').values.tolist()
+
+        # Write all data at once (more efficient)
+        worksheet.update(values, 'A1')
+
+        # Format header row (bold)
+        worksheet.format('1:1', {'textFormat': {'bold': True}})
+
+        # Auto-adjust column widths (match Excel behavior)
+        for idx, col in enumerate(df.columns):
+            # Calculate max length in column (including header)
+            max_length = len(str(col))
+            for value in df[col]:
+                if pd.notna(value):
+                    max_length = max(max_length, len(str(value)))
+
+            # Set column width (add padding, cap at 50 chars like Excel)
+            adjusted_width = min(max_length + 2, 50) * 10  # Google Sheets uses pixels
+            worksheet.update_column_width(idx, adjusted_width)
+
+    def get_file_path(self) -> str:
+        """
+        Get the Google Sheets URL for user-facing output
+
+        Returns:
+            Full URL to Google Sheets document
+        """
+        return f"https://docs.google.com/spreadsheets/d/{self.sheet_id}"
+
+
+def create_storage(output_path: Optional[str] = None, output_type: str = "auto") -> SLAStorage:
+    """
+    Factory function to create appropriate storage instance based on configuration
+
+    Decision logic (in order):
+    1. If output_path specified → Excel (implicit override)
+    2. If output_type="excel" → Excel (explicit override)
+    3. If Google Sheets configured → Google Sheets (default when configured)
+    4. Otherwise → Excel (default fallback)
+
+    Args:
+        output_path: File path for Excel output (overrides Google Sheets if specified)
+        output_type: Storage type ("auto", "excel", "sheets")
+
+    Returns:
+        SLAStorage instance (ExcelSLAStorage or GoogleSheetsSLAStorage)
+
+    Raises:
+        ValueError: If output_type is invalid
+        ImportError: If Google Sheets requested but dependencies not installed
+        Exception: If Google Sheets configured but authentication fails
+    """
+    # Validate output_type parameter
+    if output_type not in ("auto", "excel", "sheets"):
+        raise ValueError(
+            f"Invalid output_type: {output_type}. "
+            f"Must be 'auto', 'excel', or 'sheets'"
+        )
+
+    # Decision 1: If output_path specified, use Excel (implicit override)
+    if output_path:
+        return ExcelSLAStorage(output_path)
+
+    # Decision 2: If output_type="excel", use Excel (explicit override)
+    if output_type == "excel":
+        # Use default path if not specified
+        default_path = "files/sla_tracking.xlsx"
+        return ExcelSLAStorage(default_path)
+
+    # Decision 3: If output_type="sheets", require Google Sheets config
+    if output_type == "sheets":
+        google_config = config.get_google_sheets_config()
+        if not google_config:
+            raise ValueError(
+                "output_type='sheets' specified but Google Sheets not configured. "
+                "Please set GOOGLE_CREDENTIALS_FILE, GOOGLE_SHEET_ID, and "
+                "GOOGLE_SHEET_NAME in env/.env file."
+            )
+        return GoogleSheetsSLAStorage(
+            credentials_file=google_config['credentials_file'],
+            sheet_id=google_config['sheet_id'],
+            sheet_name=google_config['sheet_name']
+        )
+
+    # Decision 4: Auto-detect based on configuration
+    # output_type="auto" - check if Google Sheets configured
+    google_config = config.get_google_sheets_config()
+    if google_config:
+        # Google Sheets configured - use it
+        return GoogleSheetsSLAStorage(
+            credentials_file=google_config['credentials_file'],
+            sheet_id=google_config['sheet_id'],
+            sheet_name=google_config['sheet_name']
+        )
+
+    # Default fallback: Excel
+    default_path = "files/sla_tracking.xlsx"
+    return ExcelSLAStorage(default_path)

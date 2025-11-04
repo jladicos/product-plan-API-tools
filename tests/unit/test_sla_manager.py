@@ -2,13 +2,15 @@
 Unit tests for SLA manager functions
 
 Tests filtering logic for excluding test/development ideas.
+Tests URL generation for ProductPlan ideas.
 """
 
 import pytest
 import pandas as pd
 from datetime import datetime
+from unittest.mock import patch
 
-from productplan_api_tools.sla.manager import apply_idea_filters
+from productplan_api_tools.sla.manager import apply_idea_filters, generate_idea_url
 
 
 class TestApplyIdeaFilters:
@@ -341,3 +343,92 @@ class TestApplyIdeaFilters:
         assert len(filtered_df) == 3
         assert stats['jason_filtered'] == 1  # Only exact match before Nov 3
         assert list(filtered_df['id']) == [2, 3, 4]
+
+
+class TestGenerateIdeaUrl:
+    """Tests for generate_idea_url() function"""
+
+    @patch('productplan_api_tools.sla.manager.config')
+    def test_basic_url_generation(self, mock_config):
+        """Test basic URL generation with clean prefix"""
+        mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
+
+        url = generate_idea_url(12345)
+
+        assert url == 'https://app.productplan.com/ideas/12345'
+
+    @patch('productplan_api_tools.sla.manager.config')
+    def test_url_generation_with_trailing_slash(self, mock_config):
+        """Test URL generation strips trailing slash from prefix"""
+        mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas/'
+
+        url = generate_idea_url(12345)
+
+        # Should strip trailing slash to avoid double slash
+        assert url == 'https://app.productplan.com/ideas/12345'
+
+    @patch('productplan_api_tools.sla.manager.config')
+    def test_url_generation_with_multiple_trailing_slashes(self, mock_config):
+        """Test URL generation strips multiple trailing slashes"""
+        mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas///'
+
+        url = generate_idea_url(67890)
+
+        # Should strip all trailing slashes
+        assert url == 'https://app.productplan.com/ideas/67890'
+
+    @patch('productplan_api_tools.sla.manager.config')
+    def test_url_generation_with_different_prefix(self, mock_config):
+        """Test URL generation works with different URL prefixes"""
+        mock_config.get_url_prefix.return_value = 'https://custom.domain.com/portal/ideas'
+
+        url = generate_idea_url(99999)
+
+        assert url == 'https://custom.domain.com/portal/ideas/99999'
+
+    @patch('productplan_api_tools.sla.manager.config')
+    def test_url_generation_with_small_id(self, mock_config):
+        """Test URL generation with single digit ID"""
+        mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
+
+        url = generate_idea_url(1)
+
+        assert url == 'https://app.productplan.com/ideas/1'
+
+    @patch('productplan_api_tools.sla.manager.config')
+    def test_url_generation_with_large_id(self, mock_config):
+        """Test URL generation with large ID"""
+        mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
+
+        url = generate_idea_url(999999999)
+
+        assert url == 'https://app.productplan.com/ideas/999999999'
+
+    @patch('productplan_api_tools.sla.manager.config')
+    def test_url_generation_with_zero_id(self, mock_config):
+        """Test URL generation with ID = 0 (valid edge case)"""
+        mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
+
+        url = generate_idea_url(0)
+
+        assert url == 'https://app.productplan.com/ideas/0'
+
+    @patch('productplan_api_tools.sla.manager.config')
+    def test_url_generation_with_empty_prefix(self, mock_config):
+        """Test URL generation with empty string prefix"""
+        mock_config.get_url_prefix.return_value = ''
+
+        url = generate_idea_url(12345)
+
+        # Empty prefix gets stripped, results in just "/12345"
+        assert url == '/12345'
+
+    @patch('productplan_api_tools.sla.manager.config')
+    def test_url_generation_with_only_slashes_prefix(self, mock_config):
+        """Test URL generation with prefix containing only slashes"""
+        mock_config.get_url_prefix.return_value = '///'
+
+        url = generate_idea_url(12345)
+
+        # All slashes get stripped, results in just "/12345"
+        assert url == '/12345'

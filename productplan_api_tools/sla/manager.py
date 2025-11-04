@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 
 from productplan_api_tools.api.ideas import IdeasResource
 from productplan_api_tools.api.teams import TeamsResource
-from productplan_api_tools import utils
+from productplan_api_tools import utils, config
 from productplan_api_tools.sla.calculator import (
     extract_idea_status,
     calculate_sla_columns,
@@ -23,6 +23,30 @@ from productplan_api_tools.sla.storage import ExcelSLAStorage
 
 # Configuration constants
 SLA_UPDATE_LOOKBACK_DAYS = 14  # Number of days to look back when fetching updated ideas
+
+
+def generate_idea_url(idea_id: int) -> str:
+    """
+    Generate URL for an idea using configured URL prefix
+
+    Defensive handling of trailing slashes:
+    - Strips trailing slash from prefix
+    - Ensures single slash between prefix and ID
+
+    Args:
+        idea_id: The idea ID
+
+    Returns:
+        Full URL to the idea (e.g., "https://app.productplan.com/ideas/12345")
+
+    Example:
+        >>> generate_idea_url(12345)
+        'https://app.productplan.com/ideas/12345'
+    """
+    url_prefix = config.get_url_prefix()
+    # Defensive: strip trailing slash from prefix to avoid double slashes
+    url_prefix = url_prefix.rstrip('/')
+    return f"{url_prefix}/{idea_id}"
 
 
 def apply_idea_filters(df: pd.DataFrame, verbose: bool = True) -> Tuple[pd.DataFrame, Dict[str, int]]:
@@ -172,6 +196,10 @@ def sla_init(output_path: str, token_file: str) -> None:
     # Convert to DataFrame
     df = pd.DataFrame(processed_ideas)
 
+    # Add URL column (immediately after id)
+    if 'id' in df.columns and len(df) > 0:
+        df['url'] = df['id'].apply(generate_idea_url)
+
     # Apply filtering rules to exclude test/development ideas
     df, filter_stats = apply_idea_filters(df, verbose=True)
 
@@ -179,7 +207,7 @@ def sla_init(output_path: str, token_file: str) -> None:
     if len(df) == 0:
         # Create empty DataFrame with correct column structure
         df = pd.DataFrame(columns=[
-            'id', 'name', 'description', 'customer', 'source_name', 'source_email',
+            'id', 'url', 'name', 'description', 'customer', 'source_name', 'source_email',
             'idea_status', 'created_at', 'updated_at', 'response_sla', 'roadmap_sla',
             'currently_meets_response_sla', 'currently_meets_roadmap_sla', 'location_status'
         ])
@@ -219,7 +247,7 @@ def sla_init(output_path: str, token_file: str) -> None:
     # Reorder columns to match specification
     # Core columns before created_at
     pre_date_columns = [
-        'id', 'name', 'description', 'customer',
+        'id', 'url', 'name', 'description', 'customer',
         'source_name', 'source_email', 'idea_status'
     ]
 
@@ -235,8 +263,9 @@ def sla_init(output_path: str, token_file: str) -> None:
     # Location status
     status_columns = ['location_status']
 
-    # Team columns (dynamic - get all columns that are team names)
-    team_columns = [col for col in df.columns if col in team_mapping.values()]
+    # Team columns (all teams from mapping, sorted by team ID)
+    # Sort team_mapping items by ID (key), then extract team names (values)
+    team_columns = [name for team_id, name in sorted(team_mapping.items(), key=lambda x: x[0])]
 
     # Custom field columns (everything else)
     all_ordered = pre_date_columns + date_columns + sla_columns_list + status_columns + team_columns
@@ -246,9 +275,9 @@ def sla_init(output_path: str, token_file: str) -> None:
     ]
 
     # Final column order:
-    # id, name, desc, customer, source_name, source_email, idea_status,
-    # created_at, updated_at, [SLA columns], location_status, [team columns], [custom fields]
-    column_order = pre_date_columns + date_columns + sla_columns_list + status_columns + team_columns + custom_columns
+    # id, url, name, desc, customer, source_name, source_email, idea_status,
+    # created_at, updated_at, [SLA columns], location_status, [custom fields], [team columns sorted by ID]
+    column_order = pre_date_columns + date_columns + sla_columns_list + status_columns + custom_columns + team_columns
 
     # Only include columns that exist in the DataFrame
     column_order = [col for col in column_order if col in df.columns]
@@ -354,6 +383,10 @@ def sla_update(output_path: str, token_file: str) -> None:
     # Convert to DataFrame for filtering
     fetched_df = pd.DataFrame(processed_ideas)
 
+    # Add URL column (immediately after id)
+    if 'id' in fetched_df.columns and len(fetched_df) > 0:
+        fetched_df['url'] = fetched_df['id'].apply(generate_idea_url)
+
     # Apply filtering rules to exclude test/development ideas
     filtered_df, filter_stats = apply_idea_filters(fetched_df, verbose=True)
 
@@ -366,6 +399,10 @@ def sla_update(output_path: str, token_file: str) -> None:
     print("\nReading existing spreadsheet...")
     existing_df = storage.read()
     print(f"Existing spreadsheet has {len(existing_df)} ideas")
+
+    # Add URL column if missing (defensive - for old spreadsheets without URL column)
+    if 'url' not in existing_df.columns and 'id' in existing_df.columns and len(existing_df) > 0:
+        existing_df['url'] = existing_df['id'].apply(generate_idea_url)
 
     # Create lookup dict: idea_id → existing row (as dict)
     existing_lookup: Dict[int, Dict[str, Any]] = {}
@@ -415,9 +452,20 @@ def sla_update(output_path: str, token_file: str) -> None:
                 idea_dict['currently_meets_roadmap_sla'] = sla_columns['currently_meets_roadmap_sla']
 
                 # Update the row in existing_df
+                # First, add any new columns that don't exist yet (e.g., new team columns or custom fields)
                 for col in idea_dict.keys():
-                    if col in existing_df.columns:
-                        existing_df.loc[existing_df['id'] == idea_id, col] = idea_dict[col]
+                    if col not in existing_df.columns:
+                        # Add new column with 0 for team columns, NaN for others
+                        if col in team_mapping.values():
+                            existing_df[col] = 0
+                        else:
+                            existing_df[col] = pd.NA
+
+                # Get the row index for this idea
+                row_idx = existing_df[existing_df['id'] == idea_id].index[0]
+                # Update each column value
+                for col in idea_dict.keys():
+                    existing_df.at[row_idx, col] = idea_dict[col]
 
                 updated_count += 1
             else:
@@ -435,6 +483,10 @@ def sla_update(output_path: str, token_file: str) -> None:
             idea_dict['roadmap_sla'] = sla_columns['roadmap_sla']
             idea_dict['currently_meets_response_sla'] = sla_columns['currently_meets_response_sla']
             idea_dict['currently_meets_roadmap_sla'] = sla_columns['currently_meets_roadmap_sla']
+
+            # Add URL if not already present (should already be there from filtered_df)
+            if 'url' not in idea_dict or pd.isna(idea_dict['url']):
+                idea_dict['url'] = generate_idea_url(idea_id)
 
             # Add new row to DataFrame
             # Convert dict to DataFrame and concatenate
@@ -469,7 +521,7 @@ def sla_update(output_path: str, token_file: str) -> None:
 
     # Reorder columns to match specification (same as sla_init)
     pre_date_columns = [
-        'id', 'name', 'description', 'customer',
+        'id', 'url', 'name', 'description', 'customer',
         'source_name', 'source_email', 'idea_status'
     ]
 
@@ -482,8 +534,9 @@ def sla_update(output_path: str, token_file: str) -> None:
 
     status_columns = ['location_status']
 
-    # Team columns (dynamic - get all columns that are team names)
-    team_columns = [col for col in existing_df.columns if col in team_mapping.values()]
+    # Team columns (all teams from mapping, sorted by team ID)
+    # Sort team_mapping items by ID (key), then extract team names (values)
+    team_columns = [name for team_id, name in sorted(team_mapping.items(), key=lambda x: x[0])]
 
     # Custom field columns (everything else)
     all_ordered = pre_date_columns + date_columns + sla_columns_list + status_columns + team_columns
@@ -492,8 +545,10 @@ def sla_update(output_path: str, token_file: str) -> None:
         if col not in all_ordered
     ]
 
-    # Final column order
-    column_order = pre_date_columns + date_columns + sla_columns_list + status_columns + team_columns + custom_columns
+    # Final column order:
+    # id, url, name, desc, customer, source_name, source_email, idea_status,
+    # created_at, updated_at, [SLA columns], location_status, [custom fields], [team columns sorted by ID]
+    column_order = pre_date_columns + date_columns + sla_columns_list + status_columns + custom_columns + team_columns
 
     # Only include columns that exist in the DataFrame
     column_order = [col for col in column_order if col in existing_df.columns]

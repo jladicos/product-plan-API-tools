@@ -365,7 +365,29 @@ class GoogleSheetsSLAStorage:
 
         # Convert DataFrame to list of lists for gspread
         # Include header row
-        values = [df_copy.columns.tolist()] + df_copy.fillna('').values.tolist()
+        # Convert all values to strings to avoid complex types (lists, dicts, etc.)
+        header = [str(col) for col in df_copy.columns]
+
+        # Convert each cell to a simple string/number
+        data_rows = []
+        for _, row in df_copy.iterrows():
+            row_values = []
+            for val in row:
+                # Check for complex types FIRST (before pd.isna check)
+                # because pd.isna() fails on lists/arrays with ambiguous truth value error
+                if isinstance(val, (list, dict)):
+                    # Convert complex types to string representation
+                    # Always convert to string, even if empty ([] becomes "[]", not "")
+                    row_values.append(str(val))
+                elif val is None:
+                    row_values.append('')
+                elif pd.isna(val):
+                    row_values.append('')
+                else:
+                    row_values.append(val)
+            data_rows.append(row_values)
+
+        values = [header] + data_rows
 
         # Write all data at once (more efficient)
         worksheet.update(values, 'A1')
@@ -374,16 +396,22 @@ class GoogleSheetsSLAStorage:
         worksheet.format('1:1', {'textFormat': {'bold': True}})
 
         # Auto-adjust column widths (match Excel behavior)
-        for idx, col in enumerate(df.columns):
-            # Calculate max length in column (including header)
-            max_length = len(str(col))
-            for value in df[col]:
-                if pd.notna(value):
-                    max_length = max(max_length, len(str(value)))
+        # This is optional - if it fails, we still have the data
+        try:
+            for idx, col in enumerate(df.columns):
+                # Calculate max length in column (including header)
+                max_length = len(str(col))
+                for value in df[col]:
+                    if pd.notna(value):
+                        max_length = max(max_length, len(str(value)))
 
-            # Set column width (add padding, cap at 50 chars like Excel)
-            adjusted_width = min(max_length + 2, 50) * 10  # Google Sheets uses pixels
-            worksheet.update_column_width(idx, adjusted_width)
+                # Set column width (add padding, cap at 50 chars like Excel)
+                adjusted_width = min(max_length + 2, 50) * 10  # Google Sheets uses pixels
+                worksheet.update_column_width(idx, adjusted_width)
+        except (AttributeError, Exception) as e:
+            # Column width adjustment not supported or failed - not critical
+            # Data is already written, just continue without width adjustment
+            pass
 
     def get_file_path(self) -> str:
         """

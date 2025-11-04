@@ -18,7 +18,7 @@ from productplan_api_tools.sla.calculator import (
     calculate_sla_columns,
     compare_timestamps
 )
-from productplan_api_tools.sla.storage import ExcelSLAStorage
+from productplan_api_tools.sla.storage import SLAStorage
 
 
 # Configuration constants
@@ -123,35 +123,34 @@ def apply_idea_filters(df: pd.DataFrame, verbose: bool = True) -> Tuple[pd.DataF
     return df, stats
 
 
-def sla_init(output_path: str, token_file: str) -> None:
+def sla_init(storage: SLAStorage, token: str) -> None:
     """
     Initialize SLA tracking spreadsheet with all ideas
 
     Fetches all ideas from ProductPlan API, calculates SLA columns,
-    and creates initial Excel spreadsheet for tracking.
+    and creates initial spreadsheet for tracking.
 
     Args:
-        output_path: Path to output Excel file
-        token_file: Path to file containing API token
+        storage: SLAStorage instance (Excel or Google Sheets)
+        token: ProductPlan API token string
 
     Side effects:
         - Prints progress information
-        - Creates Excel file at output_path
-        - Creates parent directory if it doesn't exist
+        - Creates spreadsheet via storage.write()
+        - Storage handles directory/sheet creation as needed
 
     Column ordering in output:
-        id, name, description, customer, source_name, source_email,
-        created_at, updated_at, idea_status, location_status,
-        [team columns...],
-        response_sla, roadmap_sla,
-        currently_meets_response_sla, currently_meets_roadmap_sla
+        id, url, name, description, customer, source_name, source_email, idea_status,
+        created_at, updated_at, response_sla, roadmap_sla,
+        currently_meets_response_sla, currently_meets_roadmap_sla,
+        location_status, [custom fields], [team columns sorted by ID]
     """
     print("Initializing SLA tracking spreadsheet...")
-    print(f"Output file: {output_path}")
+    print(f"Output: {storage.get_file_path()}")
 
     # Create API resources
-    ideas_resource = IdeasResource(token_file)
-    teams_resource = TeamsResource(token_file)
+    ideas_resource = IdeasResource(token)
+    teams_resource = TeamsResource(token)
 
     # Fetch ALL ideas (including archived)
     print("\nFetching all ideas from ProductPlan API...")
@@ -212,10 +211,9 @@ def sla_init(output_path: str, token_file: str) -> None:
             'currently_meets_response_sla', 'currently_meets_roadmap_sla', 'location_status'
         ])
         # Write empty spreadsheet
-        storage = ExcelSLAStorage(output_path)
         storage.write(df)
         print("\nNo ideas to track after filtering. Empty spreadsheet created.")
-        print(f"Spreadsheet created: {output_path}")
+        print(f"Spreadsheet created: {storage.get_file_path()}")
         return
 
     # Remove timezone info from datetime columns for Excel compatibility
@@ -285,9 +283,8 @@ def sla_init(output_path: str, token_file: str) -> None:
     # Reorder DataFrame
     df = df[column_order]
 
-    # Write to Excel
-    print(f"\nWriting to Excel: {output_path}")
-    storage = ExcelSLAStorage(output_path)
+    # Write to storage
+    print(f"\nWriting to storage: {storage.get_file_path()}")
     storage.write(df)
 
     # Print summary
@@ -306,11 +303,11 @@ def sla_init(output_path: str, token_file: str) -> None:
     print(f"  Response SLA met: {response_met}/{len(df)} ({response_met/len(df)*100:.1f}%)")
     print(f"  Roadmap SLA met: {roadmap_met}/{len(df)} ({roadmap_met/len(df)*100:.1f}%)")
 
-    print(f"\nSpreadsheet created: {output_path}")
+    print(f"\nSpreadsheet created: {storage.get_file_path()}")
     print("="*60)
 
 
-def sla_update(output_path: str, token_file: str) -> None:
+def sla_update(storage: SLAStorage, token: str) -> None:
     """
     Update SLA tracking spreadsheet with recent changes
 
@@ -319,12 +316,12 @@ def sla_update(output_path: str, token_file: str) -> None:
     while updating current status and compliance.
 
     Args:
-        output_path: Path to existing SLA tracking Excel file
-        token_file: Path to file containing API token
+        storage: SLAStorage instance (Excel or Google Sheets)
+        token: ProductPlan API token string
 
     Side effects:
         - Prints progress information
-        - Updates Excel file at output_path
+        - Updates spreadsheet via storage.write()
         - If spreadsheet doesn't exist, calls sla_init() instead
 
     Business Logic:
@@ -336,13 +333,12 @@ def sla_update(output_path: str, token_file: str) -> None:
         - Preserves historical SLA dates when updating existing ideas
     """
     print("Updating SLA tracking spreadsheet...")
-    print(f"Spreadsheet: {output_path}")
+    print(f"Spreadsheet: {storage.get_file_path()}")
 
     # Check if spreadsheet exists
-    storage = ExcelSLAStorage(output_path)
     if not storage.exists():
         print("\nSpreadsheet doesn't exist. Running initial setup...")
-        sla_init(output_path, token_file)
+        sla_init(storage, token)
         return
 
     # Calculate lookback date for API filter
@@ -350,8 +346,8 @@ def sla_update(output_path: str, token_file: str) -> None:
     print(f"\nFetching ideas updated since: {lookback_date} ({SLA_UPDATE_LOOKBACK_DAYS}-day lookback)")
 
     # Create API resources
-    ideas_resource = IdeasResource(token_file)
-    teams_resource = TeamsResource(token_file)
+    ideas_resource = IdeasResource(token)
+    teams_resource = TeamsResource(token)
 
     # Fetch ideas updated in lookback period
     print("\nFetching recently updated ideas from ProductPlan API...")
@@ -557,7 +553,7 @@ def sla_update(output_path: str, token_file: str) -> None:
     existing_df = existing_df[column_order]
 
     # Write updated DataFrame
-    print(f"\nWriting updates to: {output_path}")
+    print(f"\nWriting updates to: {storage.get_file_path()}")
     storage.write(existing_df)
 
     # Print summary

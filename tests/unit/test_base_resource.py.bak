@@ -359,4 +359,4 @@ class TestAbstractBaseClass:
 
         # Should not be able to instantiate
         with pytest.raises(TypeError):
-            IncompleteResource(token="test_token")
+            IncompleteResource(token_file="token.txt")

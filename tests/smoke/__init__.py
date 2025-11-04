@@ -6,5 +6,6 @@ These tests hit the real ProductPlan API to verify:
 - Response structures haven't changed
 - Authentication is working
 
-These tests require a valid token.txt file and will be skipped if not present.
+These tests require a valid env/.env file with PRODUCTPLAN_API_TOKEN configured
+and will be skipped if not present.
 """

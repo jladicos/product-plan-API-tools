@@ -26,34 +26,27 @@ class BaseResource(ABC):
 
     BASE_URL = "https://app.productplan.com/api/v2"
 
-    def __init__(self, token_file: str = "token.txt"):
+    def __init__(self, token: str):
         """
         Initialize the API resource with authentication
 
         Args:
-            token_file: Path to file containing ProductPlan API token
+            token: ProductPlan API token string
 
         Raises:
-            FileNotFoundError: If token file doesn't exist
-            SystemExit: If token file can't be read or is invalid
+            ValueError: If token is empty or invalid
         """
-        try:
-            with open(token_file, 'r') as f:
-                self.token = f.read().strip()
-                print(f"Token loaded from {token_file}")
-                # Print a partially masked token for debugging
-                if len(self.token) > 8:
-                    masked_token = self.token[:4] + "*" * (len(self.token) - 8) + self.token[-4:]
-                    print(f"Token (partially masked): {masked_token}")
-                else:
-                    print("Warning: Token seems too short")
-        except FileNotFoundError:
-            print(f"Error: Token file '{token_file}' not found.")
-            print("Please create this file with your ProductPlan API token.")
-            sys.exit(1)
-        except Exception as e:
-            print(f"Error reading token file: {e}")
-            sys.exit(1)
+        if not token or not token.strip():
+            raise ValueError("API token cannot be empty")
+
+        self.token = token.strip()
+
+        # Print a partially masked token for debugging
+        if len(self.token) > 8:
+            masked_token = self.token[:4] + "*" * (len(self.token) - 8) + self.token[-4:]
+            print(f"Token (partially masked): {masked_token}")
+        else:
+            print("Warning: Token seems too short")
 
         self.headers = {
             "accept": "application/json",

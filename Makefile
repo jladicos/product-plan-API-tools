@@ -5,11 +5,11 @@ ENDPOINT ?= ideas
 OUTPUT ?= files/productplan_data.xlsx
 PAGE ?= 1
 PAGE_SIZE ?= 200
-TOKEN_FILE ?= token.txt
 ALL_PAGES ?= true
 LOCATION_STATUS ?= not_archived
 OBJECTIVE_STATUS ?= active
 OUTPUT_FORMAT ?= excel
+OUTPUT_TYPE ?= auto
 
 # Support lowercase variable names for convenience
 ifdef output
@@ -36,6 +36,12 @@ endif
 ifdef output-format
 OUTPUT_FORMAT := $(output-format)
 endif
+ifdef output_type
+OUTPUT_TYPE := $(output_type)
+endif
+ifdef output-type
+OUTPUT_TYPE := $(output-type)
+endif
 
 # Allow multiple filters
 # Usage: make ideas FILTERS="name:Feature Request customer:Acme"
@@ -53,7 +59,7 @@ help:
 	@echo "  make help              - Show this help message"
 	@echo "  make build             - Build the Docker image"
 	@echo "  make test              - Run mocked unit and integration tests"
-	@echo "  make test-smoke        - Run smoke tests (requires token.txt, hits real API)"
+	@echo "  make test-smoke        - Run smoke tests (requires env/.env, hits real API)"
 	@echo "  make test-all          - Run all tests (mocked + smoke)"
 	@echo ""
 	@echo "Data fetching commands:"
@@ -73,7 +79,6 @@ help:
 	@echo "  OUTPUT=filename.xlsx   - Set output filename (default: files/productplan_data.xlsx)"
 	@echo "  PAGE=num               - Set page number (default: $(PAGE))"
 	@echo "  PAGE_SIZE=num          - Set page size (default: $(PAGE_SIZE))"
-	@echo "  TOKEN_FILE=file        - Set token file (default: $(TOKEN_FILE))"
 	@echo "  ALL_PAGES=true/false   - Fetch all pages (default: $(ALL_PAGES))"
 	@echo "  LOCATION_STATUS=status - Filter ideas by location status (default: $(LOCATION_STATUS))"
 	@echo "                           Options: all, visible, hidden, archived, not_archived"
@@ -81,9 +86,13 @@ help:
 	@echo "                            Options: active, all"
 	@echo "  OUTPUT_FORMAT=format    - Output format (default: $(OUTPUT_FORMAT))"
 	@echo "                            Options: excel, markdown, javascript"
+	@echo "  OUTPUT_TYPE=type        - SLA storage type (default: $(OUTPUT_TYPE))"
+	@echo "                            Options: auto (Google Sheets if configured, else Excel),"
+	@echo "                                     excel (force Excel), sheets (force Google Sheets)"
 	@echo "  FILTERS=\"key1:value1 key2:value2\" - Add multiple filters"
 	@echo ""
 	@echo "Note: Both uppercase (OUTPUT=) and lowercase (output=) work for convenience"
+	@echo "Note: API token is loaded from env/.env (PRODUCTPLAN_API_TOKEN)"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make ideas OUTPUT=files/all_ideas.xlsx"
@@ -98,9 +107,12 @@ help:
 	@echo "  make okrs output_format=markdown output=files/my_objectives.md"
 	@echo "  make objectivemap output=files/objective_mapping.xlsx"
 	@echo "  make objectivemap output_format=javascript output=files/objectives.js"
-	@echo "  make sla-init"
+	@echo "  make sla-init                          # Auto-detect (Google Sheets or Excel)"
 	@echo "  make sla-init OUTPUT=files/custom_sla.xlsx"
+	@echo "  make sla-init OUTPUT_TYPE=excel        # Force Excel output"
+	@echo "  make sla-init OUTPUT_TYPE=sheets       # Force Google Sheets output"
 	@echo "  make sla-update"
+	@echo "  make sla-update OUTPUT_TYPE=excel      # Update Excel file"
 	@echo "  make custom ENDPOINT=okrs output=files/custom_okrs.xlsx objective_status=active"
 	@echo ""
 	@echo "Note: You can still use the direct Docker commands if needed:"
@@ -120,11 +132,11 @@ test:
 	docker run --rm -v $(CURDIR):/app --entrypoint pytest productplan-api tests/ -v --ignore=tests/smoke
 	@echo "Tests completed!"
 
-# Run smoke tests (requires token.txt and hits real API)
+# Run smoke tests (requires env/.env and hits real API)
 .PHONY: test-smoke
 test-smoke:
 	@echo "Running smoke tests against real ProductPlan API..."
-	@echo "Note: This requires a valid token.txt file and will make real API calls."
+	@echo "Note: This requires a valid env/.env file with PRODUCTPLAN_API_TOKEN and will make real API calls."
 	docker run --rm -v $(CURDIR):/app --entrypoint pytest productplan-api tests/smoke/ -v
 	@echo "Smoke tests completed!"
 
@@ -156,7 +168,6 @@ ideas:
 		--endpoint ideas \
 		--page $(PAGE) \
 		--page-size $(PAGE_SIZE) \
-		--token-file $(TOKEN_FILE) \
 		--output $(OUTPUT) \
 		--location-status $(LOCATION_STATUS) \
 		$(call all_pages_flag) \
@@ -171,7 +182,6 @@ teams:
 		--endpoint teams \
 		--page $(PAGE) \
 		--page-size $(PAGE_SIZE) \
-		--token-file $(TOKEN_FILE) \
 		--output $(OUTPUT) \
 		$(call all_pages_flag) \
 		$(call process_filters)
@@ -185,7 +195,6 @@ idea-forms:
 		--endpoint idea-forms \
 		--page $(PAGE) \
 		--page-size $(PAGE_SIZE) \
-		--token-file $(TOKEN_FILE) \
 		--output $(OUTPUT) \
 		$(call all_pages_flag) \
 		$(call process_filters)
@@ -200,7 +209,6 @@ okrs:
 		--endpoint okrs \
 		--page $(PAGE) \
 		--page-size $(PAGE_SIZE) \
-		--token-file $(TOKEN_FILE) \
 		--output $(FINAL_OUTPUT) \
 		--objective-status $(OBJECTIVE_STATUS) \
 		--output-format $(OUTPUT_FORMAT) \
@@ -216,7 +224,6 @@ objectivemap:
 		--endpoint objectivemap \
 		--page $(PAGE) \
 		--page-size $(PAGE_SIZE) \
-		--token-file $(TOKEN_FILE) \
 		--output $(OUTPUT) \
 		--objective-status $(OBJECTIVE_STATUS) \
 		--output-format $(OUTPUT_FORMAT) \
@@ -231,9 +238,8 @@ sla-init:
 	@echo "Initializing SLA tracking spreadsheet..."
 	@$(DOCKER_CMD) \
 		--endpoint sla-init \
-		--token-file token.txt \
-		--output $(SLA_OUTPUT)
-	@echo "SLA tracking spreadsheet initialized at $(SLA_OUTPUT)"
+		--output $(SLA_OUTPUT) \
+		--output-type $(OUTPUT_TYPE)
 
 # Update SLA tracking spreadsheet (daily incremental updates)
 .PHONY: sla-update
@@ -242,9 +248,8 @@ sla-update:
 	@echo "Updating SLA tracking spreadsheet..."
 	@$(DOCKER_CMD) \
 		--endpoint sla-update \
-		--token-file token.txt \
-		--output $(SLA_OUTPUT)
-	@echo "SLA tracking spreadsheet updated at $(SLA_OUTPUT)"
+		--output $(SLA_OUTPUT) \
+		--output-type $(OUTPUT_TYPE)
 
 # Get ideas, teams, idea forms, and OKRs
 .PHONY: all
@@ -263,7 +268,6 @@ custom:
 		--endpoint $(ENDPOINT) \
 		--page $(PAGE) \
 		--page-size $(PAGE_SIZE) \
-		--token-file $(TOKEN_FILE) \
 		--output $(OUTPUT) \
 		--location-status $(LOCATION_STATUS) \
 		--objective-status $(OBJECTIVE_STATUS) \

@@ -29,21 +29,39 @@ else
 	echo "✅ Make is installed."
 fi
 
-# Check for token.txt
-if [ ! -f token.txt ]; then
-	echo "⚠️ No token.txt file found."
-	echo "   Would you like to create it now? (y/n)"
-	read -r create_token
-	if [[ "$create_token" == "y" || "$create_token" == "Y" ]]; then
+# Check for env/.env file
+if [ ! -f env/.env ]; then
+	echo "⚠️  No env/.env file found."
+	echo "   Would you like to create it now from the sample? (y/n)"
+	read -r create_env
+	if [[ "$create_env" == "y" || "$create_env" == "Y" ]]; then
+		# Copy sample to env/.env
+		cp env/.env.sample env/.env
+
+		echo "✅ env/.env created from sample."
+		echo ""
 		echo "   Please enter your ProductPlan API token:"
 		read -r token
-		echo "$token" > token.txt
-		echo "✅ token.txt created."
+
+		# Replace the placeholder with actual token
+		if [[ "$OSTYPE" == "darwin"* ]]; then
+			# macOS uses BSD sed
+			sed -i '' "s|PRODUCTPLAN_API_TOKEN=your_api_token_here|PRODUCTPLAN_API_TOKEN=$token|" env/.env
+		else
+			# Linux uses GNU sed
+			sed -i "s|PRODUCTPLAN_API_TOKEN=your_api_token_here|PRODUCTPLAN_API_TOKEN=$token|" env/.env
+		fi
+
+		echo "✅ API token configured in env/.env"
+		echo ""
+		echo "   You can edit env/.env to configure additional options like Google Sheets."
 	else
-		echo "⚠️ You will need to create a token.txt file with your API token before using the client."
+		echo "⚠️  You will need to create env/.env from env/.env.sample before using the client."
+		echo "   Copy the file and fill in your ProductPlan API token:"
+		echo "   cp env/.env.sample env/.env"
 	fi
 else
-	echo "✅ token.txt found."
+	echo "✅ env/.env found."
 fi
 
 # Build Docker image
@@ -67,8 +85,8 @@ echo
 echo "2. Get all teams:"
 echo "   make teams"
 echo
-echo "3. Get both ideas and teams:"
-echo "   make all"
+echo "3. Initialize SLA tracking:"
+echo "   make sla-init"
 echo
 echo "4. See all available commands:"
 echo "   make help"

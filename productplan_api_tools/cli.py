@@ -10,6 +10,9 @@ import os
 import argparse
 from typing import Optional
 
+# Import configuration module
+from productplan_api_tools import config
+
 # Import API resources
 from productplan_api_tools.api.ideas import IdeasResource
 from productplan_api_tools.api.teams import TeamsResource
@@ -21,8 +24,9 @@ from productplan_api_tools.api.objective_maps import ObjectiveMappingResource
 from productplan_api_tools import exporters
 from productplan_api_tools import utils
 
-# Import SLA manager functions
+# Import SLA manager functions and storage factory
 from productplan_api_tools.sla.manager import sla_init, sla_update
+from productplan_api_tools.sla.storage import create_storage
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -30,14 +34,13 @@ def parse_arguments() -> argparse.Namespace:
     Parse command-line arguments
 
     Defines all CLI arguments and their defaults.
-    Identical to current implementation for backward compatibility.
+    Token is loaded from env/.env via config module.
 
     Returns:
         Parsed arguments namespace
 
     Arguments:
-        --endpoint: ideas, teams, idea-forms, okrs, objectivemap (default: ideas)
-        --token-file: Token file path (default: token.txt)
+        --endpoint: ideas, teams, idea-forms, okrs, objectivemap, sla-init, sla-update (default: ideas)
         --page: Page number (default: 1)
         --page-size: Items per page (default: 200)
         --filter: Filter key-value pairs (repeatable)
@@ -46,6 +49,7 @@ def parse_arguments() -> argparse.Namespace:
         --location-status: Ideas filter (default: not_archived)
         --objective-status: Objectives filter (default: active)
         --output-format: excel, markdown, javascript (default: excel)
+        --output-type: auto, excel, sheets - SLA storage type (default: auto)
     """
     parser = argparse.ArgumentParser(
         description='ProductPlan API Tools - Fetch and export ProductPlan data'
@@ -57,13 +61,6 @@ def parse_arguments() -> argparse.Namespace:
         default='ideas',
         choices=['ideas', 'teams', 'idea-forms', 'okrs', 'objectivemap', 'sla-init', 'sla-update'],
         help='API endpoint to fetch from or SLA command to run (default: ideas)'
-    )
-
-    parser.add_argument(
-        '--token-file',
-        type=str,
-        default='token.txt',
-        help='Path to file containing ProductPlan API token (default: token.txt)'
     )
 
     parser.add_argument(
@@ -125,27 +122,37 @@ def parse_arguments() -> argparse.Namespace:
         help='Output format (default: excel)'
     )
 
+    parser.add_argument(
+        '--output-type',
+        type=str,
+        default='auto',
+        choices=['auto', 'excel', 'sheets'],
+        help='Storage type for SLA tracking: auto (use Google Sheets if configured), excel, or sheets (default: auto)'
+    )
+
     return parser.parse_args()
 
 
 # Handler functions for each endpoint
 
-def handle_ideas_command(args: argparse.Namespace, token_file: str) -> None:
+def handle_ideas_command(args: argparse.Namespace) -> None:
     """
     Handle ideas endpoint command
 
     Args:
         args: Parsed arguments
-        token_file: Path to token file
 
     Side effects:
         Fetches ideas, processes with custom fields and teams, exports to Excel
     """
     print("Fetching ideas...")
 
+    # Get token from config
+    token = config.get_api_token()
+
     # Create resources
-    ideas_resource = IdeasResource(token_file)
-    teams_resource = TeamsResource(token_file)
+    ideas_resource = IdeasResource(token)
+    teams_resource = TeamsResource(token)
 
     # Build filter dictionary
     filters = {}
@@ -172,21 +179,23 @@ def handle_ideas_command(args: argparse.Namespace, token_file: str) -> None:
     exporters.excel.export(processed_ideas, args.output)
 
 
-def handle_teams_command(args: argparse.Namespace, token_file: str) -> None:
+def handle_teams_command(args: argparse.Namespace) -> None:
     """
     Handle teams endpoint command
 
     Args:
         args: Parsed arguments
-        token_file: Path to token file
 
     Side effects:
         Fetches teams, exports to Excel
     """
     print("Fetching teams...")
 
+    # Get token from config
+    token = config.get_api_token()
+
     # Create resource
-    teams_resource = TeamsResource(token_file)
+    teams_resource = TeamsResource(token)
 
     # Build filter dictionary
     filters = {}
@@ -209,21 +218,23 @@ def handle_teams_command(args: argparse.Namespace, token_file: str) -> None:
     exporters.excel.export(teams_data, args.output)
 
 
-def handle_idea_forms_command(args: argparse.Namespace, token_file: str) -> None:
+def handle_idea_forms_command(args: argparse.Namespace) -> None:
     """
     Handle idea-forms endpoint command
 
     Args:
         args: Parsed arguments
-        token_file: Path to token file
 
     Side effects:
         Fetches idea forms, processes with flattened custom fields, exports to Excel
     """
     print("Fetching idea forms...")
 
+    # Get token from config
+    token = config.get_api_token()
+
     # Create resource
-    idea_forms_resource = IdeaFormsResource(token_file)
+    idea_forms_resource = IdeaFormsResource(token)
 
     # Build filter dictionary
     filters = {}
@@ -246,22 +257,24 @@ def handle_idea_forms_command(args: argparse.Namespace, token_file: str) -> None
     exporters.excel.export(processed_forms, args.output)
 
 
-def handle_okrs_command(args: argparse.Namespace, token_file: str) -> None:
+def handle_okrs_command(args: argparse.Namespace) -> None:
     """
     Handle okrs endpoint command
 
     Args:
         args: Parsed arguments
-        token_file: Path to token file
 
     Side effects:
         Fetches OKRs with team mapping, exports to Excel or Markdown based on output_format
     """
     print("Fetching OKRs (objectives and key results)...")
 
+    # Get token from config
+    token = config.get_api_token()
+
     # Create resources
-    okrs_resource = OKRsResource(token_file)
-    teams_resource = TeamsResource(token_file)
+    okrs_resource = OKRsResource(token)
+    teams_resource = TeamsResource(token)
 
     # Build team mapping
     team_mapping = teams_resource.build_id_to_name_mapping()
@@ -289,22 +302,24 @@ def handle_okrs_command(args: argparse.Namespace, token_file: str) -> None:
         exporters.excel.export(okr_data, args.output)
 
 
-def handle_objectivemap_command(args: argparse.Namespace, token_file: str) -> None:
+def handle_objectivemap_command(args: argparse.Namespace) -> None:
     """
     Handle objectivemap endpoint command
 
     Args:
         args: Parsed arguments
-        token_file: Path to token file
 
     Side effects:
         Fetches objective mapping with team mapping, exports to Excel or JavaScript based on output_format
     """
     print("Fetching objective mapping data...")
 
+    # Get token from config
+    token = config.get_api_token()
+
     # Create resources
-    mapping_resource = ObjectiveMappingResource(token_file)
-    teams_resource = TeamsResource(token_file)
+    mapping_resource = ObjectiveMappingResource(token)
+    teams_resource = TeamsResource(token)
 
     # Build team mapping
     team_mapping = teams_resource.build_id_to_name_mapping()
@@ -332,85 +347,97 @@ def handle_objectivemap_command(args: argparse.Namespace, token_file: str) -> No
         exporters.excel.export(mapping_data, args.output)
 
 
-def handle_sla_init_command(args: argparse.Namespace, token_file: str) -> None:
+def handle_sla_init_command(args: argparse.Namespace) -> None:
     """
     Handle sla-init command
 
     Creates initial SLA tracking spreadsheet with all current ideas.
 
     Args:
-        args: Parsed arguments
-        token_file: Path to token file (always 'token.txt')
+        args: Parsed arguments (includes output and output_type)
 
     Side effects:
-        Creates Excel spreadsheet at output path with SLA tracking data
+        Creates spreadsheet (Excel or Google Sheets) with SLA tracking data
     """
-    # Use sla_tracking.xlsx as default if still using generic default
-    output_path = args.output
-    if output_path == 'files/productplan_data.xlsx':
+    # Get token from config
+    token = config.get_api_token()
+
+    # Determine if user explicitly specified output path
+    # Recognize both generic default and SLA-specific default from Makefile
+    # If using default AND output_type is not "excel", pass None to let factory decide
+    output_path = None
+    if args.output not in ('files/productplan_data.xlsx', 'files/sla_tracking.xlsx'):
+        # User explicitly specified custom output path - use Excel
+        output_path = args.output
+    elif args.output_type == 'excel':
+        # User wants Excel explicitly - use default path
         output_path = 'files/sla_tracking.xlsx'
+    # else: output_path=None, let factory decide based on output_type and config
+
+    # Create storage instance (factory decides Excel vs Google Sheets)
+    storage = create_storage(output_path=output_path, output_type=args.output_type)
 
     print(f"Initializing SLA tracking spreadsheet...")
-    print(f"Output: {output_path}")
 
     # Call sla_init from manager
-    sla_init(output_path=output_path, token_file=token_file)
+    sla_init(storage=storage, token=token)
 
 
-def handle_sla_update_command(args: argparse.Namespace, token_file: str) -> None:
+def handle_sla_update_command(args: argparse.Namespace) -> None:
     """
     Handle sla-update command
 
     Updates existing SLA tracking spreadsheet with recent changes (14-day lookback).
 
     Args:
-        args: Parsed arguments
-        token_file: Path to token file (always 'token.txt')
+        args: Parsed arguments (includes output and output_type)
 
     Side effects:
-        Updates Excel spreadsheet at output path with recent SLA changes
+        Updates spreadsheet (Excel or Google Sheets) with recent SLA changes
     """
-    # Use sla_tracking.xlsx as default if still using generic default
-    output_path = args.output
-    if output_path == 'files/productplan_data.xlsx':
+    # Get token from config
+    token = config.get_api_token()
+
+    # Determine if user explicitly specified output path
+    # Recognize both generic default and SLA-specific default from Makefile
+    # If using default AND output_type is not "excel", pass None to let factory decide
+    output_path = None
+    if args.output not in ('files/productplan_data.xlsx', 'files/sla_tracking.xlsx'):
+        # User explicitly specified custom output path - use Excel
+        output_path = args.output
+    elif args.output_type == 'excel':
+        # User wants Excel explicitly - use default path
         output_path = 'files/sla_tracking.xlsx'
+    # else: output_path=None, let factory decide based on output_type and config
+
+    # Create storage instance (factory decides Excel vs Google Sheets)
+    storage = create_storage(output_path=output_path, output_type=args.output_type)
 
     print(f"Updating SLA tracking spreadsheet...")
-    print(f"Output: {output_path}")
 
     # Call sla_update from manager
-    sla_update(output_path=output_path, token_file=token_file)
+    sla_update(storage=storage, token=token)
 
 
 def route_command(args: argparse.Namespace) -> None:
     """
     Route CLI command to appropriate handler
 
-    This is a lightweight dispatcher that:
-    1. Validates token file exists
-    2. Routes to appropriate handler function based on endpoint
+    This is a lightweight dispatcher that routes to the appropriate
+    handler function based on the endpoint argument.
 
     Args:
         args: Parsed command-line arguments
 
     Raises:
-        SystemExit: If token file missing or endpoint unknown
+        SystemExit: If endpoint is unknown
 
     Side effects:
         Delegates to handler functions which fetch/process/export data
+
+    Note:
+        Token is loaded from env/.env via config module in each handler
     """
-    # For SLA commands, always use token.txt (ignore --token-file arg)
-    if args.endpoint in ['sla-init', 'sla-update']:
-        token_file = 'token.txt'
-    else:
-        token_file = args.token_file
-
-    # Validate token file exists
-    if not os.path.isfile(token_file):
-        print(f"Error: Token file not found: {token_file}")
-        print("Please create a token file with your ProductPlan API token.")
-        sys.exit(1)
-
     # Route to appropriate handler
     handlers = {
         'ideas': handle_ideas_command,
@@ -428,5 +455,5 @@ def route_command(args: argparse.Namespace) -> None:
         print(f"Valid endpoints: {', '.join(handlers.keys())}")
         sys.exit(1)
 
-    # Call the handler
-    handler(args, token_file)
+    # Call the handler (token loaded from config in each handler)
+    handler(args)

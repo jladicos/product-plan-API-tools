@@ -285,7 +285,7 @@ These constraints MUST be met regardless of implementation approach:
 # Build Docker image
 make build
 
-# Initial setup (creates token.txt and builds image)  
+# Initial setup (creates env/.env if needed and builds image)
 ./setup.sh
 ```
 
@@ -365,7 +365,7 @@ productplan_api_tools/
 ### Core Components
 
 1. **BaseResource class** (`api/client.py`)
-   - Handles authentication via Bearer token from `token.txt`
+   - Handles authentication via Bearer token (passed as string parameter)
    - Provides common HTTP request methods (`_make_request`, `_fetch_all_pages`)
    - Implements pagination logic for all endpoints
    - Abstract base class - all resources inherit from it
@@ -431,10 +431,11 @@ productplan_api_tools/
 - `productplan_api.py.old` - Archived monolithic version (reference only)
 - `Makefile` - Command interface with Docker integration
 - `Dockerfile` - Python 3.9 container, entry point: `python -m productplan_api_tools`
-- `requirements.txt` - Python dependencies (requests, pandas, openpyxl, numpy, pytest)
-- `token.txt` - ProductPlan API token (not in repo, created by setup.sh)
+- `requirements.txt` - Python dependencies (requests, pandas, openpyxl, numpy, pytest, python-dotenv, gspread)
+- `env/.env` - Environment configuration (API token, URL prefix, Google Sheets credentials) - git-ignored
+- `env/.env.sample` - Sample environment file with documentation
 - `files/` - Directory for all generated output files (auto-created, git-ignored)
-- `tests/` - Comprehensive test suite (169 tests: 127 unit + 42 integration)
+- `tests/` - Comprehensive test suite (321 tests: 283 unit + 28 integration + 10 smoke)
 
 ## OKR Usage Examples and Best Practices
 

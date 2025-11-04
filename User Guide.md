@@ -244,12 +244,14 @@ make custom ENDPOINT=okrs OUTPUT_FORMAT=markdown OUTPUT=quarterly_okrs.md OBJECT
 | `OUTPUT` | Output filename | productplan_data.xlsx |
 | `PAGE` | Page number | 1 |
 | `PAGE_SIZE` | Number of items per page | 200 |
-| `TOKEN_FILE` | File containing the API token | token.txt |
 | `ALL_PAGES` | Fetch all pages | true |
 | `LOCATION_STATUS` | Filter ideas by location status | not_archived |
 | `OBJECTIVE_STATUS` | Filter objectives by status | active |
 | `OUTPUT_FORMAT` | Output format for OKRs | excel |
+| `OUTPUT_TYPE` | SLA storage type | auto |
 | `FILTERS` | Space-separated key:value pairs | (none) |
+
+**Note:** API token is configured in `env/.env` file (PRODUCTPLAN_API_TOKEN variable)
 
 ## Using Direct Docker Commands
 
@@ -279,19 +281,25 @@ docker run --rm -v $(pwd):/app productplan-api --endpoint okrs --all-pages --obj
 
 ### Common Issues
 
-1. **Authentication Failed (401)**:
-   - Verify that your token in `token.txt` is correct and not expired
-   - Ensure there are no extra spaces or newlines in the token file
+1. **Configuration File Missing**:
+   - Error: "Configuration file not found: env/.env"
+   - Solution: Copy `env/.env.sample` to `env/.env` and add your API token
+   - Command: `cp env/.env.sample env/.env`
 
-2. **Permission Error When Writing Output**:
+2. **Authentication Failed (401)**:
+   - Verify that `PRODUCTPLAN_API_TOKEN` in `env/.env` is correct and not expired
+   - Ensure there are no extra spaces or quotes around the token value
+   - Check that the env/.env file is in the correct location
+
+3. **Permission Error When Writing Output**:
    - Make sure you're running the command in a directory where you have write permissions
    - Try specifying a different output path: `make ideas OUTPUT=/path/to/output.xlsx`
 
-3. **Docker Not Running**:
+4. **Docker Not Running**:
    - Make sure Docker Desktop is running on your machine
    - Try restarting Docker if you're having issues
 
-4. **"make: command not found" Error**:
+5. **"make: command not found" Error**:
    - Install Make:
 	 - On macOS: `brew install make`
 	 - On Ubuntu/Debian: `sudo apt-get install make`

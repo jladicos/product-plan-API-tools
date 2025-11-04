@@ -673,6 +673,116 @@ class TestGoogleSheetsSLAStorage(unittest.TestCase):
         self.assertEqual(list(df.columns), ['id', 'name', 'created_at', 'currently_meets_response_sla'])
         self.assertTrue(df.empty)
 
+    @patch('productplan_api_tools.sla.storage.GSPREAD_AVAILABLE', True)
+    @patch('productplan_api_tools.sla.storage.gspread')
+    @patch('productplan_api_tools.sla.storage.Credentials')
+    @patch('os.path.exists')
+    def test_write_with_complex_types_serializes_to_strings(
+        self, mock_exists, mock_creds, mock_gspread
+    ):
+        """Test write() converts lists and dicts to strings to avoid gspread errors"""
+        # Setup mocks
+        mock_exists.return_value = True
+        mock_creds_instance = Mock()
+        mock_creds.from_service_account_file.return_value = mock_creds_instance
+
+        mock_client = Mock()
+        mock_spreadsheet = Mock()
+        mock_worksheet = Mock()
+        mock_gspread.authorize.return_value = mock_client
+        mock_client.open_by_key.return_value = mock_spreadsheet
+        mock_spreadsheet.worksheet.return_value = mock_worksheet
+
+        # Create storage
+        storage = GoogleSheetsSLAStorage(
+            self.credentials_file,
+            self.sheet_id,
+            self.sheet_name
+        )
+
+        # Create DataFrame with complex types (lists, dicts)
+        df = pd.DataFrame({
+            'id': [1, 2, 3],
+            'name': ['Idea 1', 'Idea 2', 'Idea 3'],
+            'tags': [['tag1', 'tag2'], [], ['tag3']],  # Lists
+            'metadata': [{'key': 'value'}, {}, None],  # Dicts
+            'team_ids': [[1, 2, 3], [4], None]  # Lists with None
+        })
+
+        # Write data
+        storage.write(df)
+
+        # Get the data that was written
+        call_args = mock_worksheet.update.call_args
+        written_data = call_args[0][0]
+
+        # Verify complex types are converted to strings
+        self.assertEqual(len(written_data), 4)  # Header + 3 rows
+
+        # Row 1: lists and dicts converted to string representations
+        self.assertEqual(written_data[1][2], "['tag1', 'tag2']")
+        self.assertEqual(written_data[1][3], "{'key': 'value'}")
+        self.assertEqual(written_data[1][4], "[1, 2, 3]")
+
+        # Row 2: empty lists and dicts
+        self.assertEqual(written_data[2][2], "[]")
+        self.assertEqual(written_data[2][3], "{}")
+        self.assertEqual(written_data[2][4], "[4]")
+
+        # Row 3: None values converted to empty strings
+        self.assertEqual(written_data[3][2], "['tag3']")
+        self.assertEqual(written_data[3][3], '')  # None → ''
+        self.assertEqual(written_data[3][4], '')  # None → ''
+
+    @patch('productplan_api_tools.sla.storage.GSPREAD_AVAILABLE', True)
+    @patch('productplan_api_tools.sla.storage.gspread')
+    @patch('productplan_api_tools.sla.storage.Credentials')
+    @patch('os.path.exists')
+    def test_write_handles_column_width_adjustment_failure_gracefully(
+        self, mock_exists, mock_creds, mock_gspread
+    ):
+        """Test write() continues successfully even if column width adjustment fails"""
+        # Setup mocks
+        mock_exists.return_value = True
+        mock_creds_instance = Mock()
+        mock_creds.from_service_account_file.return_value = mock_creds_instance
+
+        mock_client = Mock()
+        mock_spreadsheet = Mock()
+        mock_worksheet = Mock()
+        mock_gspread.authorize.return_value = mock_client
+        mock_client.open_by_key.return_value = mock_spreadsheet
+        mock_spreadsheet.worksheet.return_value = mock_worksheet
+
+        # Make update_column_width raise an AttributeError (method not available)
+        mock_worksheet.update_column_width.side_effect = AttributeError("Method not supported")
+
+        # Create storage
+        storage = GoogleSheetsSLAStorage(
+            self.credentials_file,
+            self.sheet_id,
+            self.sheet_name
+        )
+
+        # Create test DataFrame
+        df = pd.DataFrame({
+            'id': [1, 2],
+            'name': ['Idea 1', 'Idea 2'],
+            'description': ['Short', 'This is a much longer description']
+        })
+
+        # Write should succeed despite column width adjustment failure
+        storage.write(df)
+
+        # Verify data was written (update was called)
+        mock_worksheet.update.assert_called_once()
+
+        # Verify clear was called
+        mock_worksheet.clear.assert_called_once()
+
+        # Verify format was called (header bold)
+        mock_worksheet.format.assert_called_once()
+
 
 class TestCreateStorageFactory(unittest.TestCase):
     """Tests for create_storage() factory function"""

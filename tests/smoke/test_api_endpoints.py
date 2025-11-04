@@ -2,7 +2,7 @@
 Smoke tests for ProductPlan API endpoints
 
 These tests hit the real ProductPlan API to verify endpoints are working.
-Requires valid token.txt file.
+Requires valid env/.env file with PRODUCTPLAN_API_TOKEN configured.
 """
 import pytest
 import os
@@ -16,22 +16,29 @@ from productplan_api_tools.api.idea_forms import IdeaFormsResource
 from productplan_api_tools.api.objective_maps import ObjectiveMappingResource
 
 
-# Fixture to check for token file
+# Fixture to check for env/.env and get API token
 @pytest.fixture(scope="module")
-def token_file():
-    """Check if token file exists, skip tests if not"""
-    token_path = Path("token.txt")
-    if not token_path.exists():
-        pytest.skip("token.txt not found - skipping smoke tests")
-    return str(token_path)
+def api_token():
+    """Get API token from config, skip tests if env/.env is missing"""
+    env_path = Path("env/.env")
+    if not env_path.exists():
+        pytest.skip("env/.env not found - skipping smoke tests")
+
+    # Import config to get token
+    from productplan_api_tools import config
+    try:
+        token = config.get_api_token()
+        return token
+    except ValueError:
+        pytest.skip("PRODUCTPLAN_API_TOKEN not set in env/.env - skipping smoke tests")
 
 
 class TestTeamsEndpoint:
     """Smoke tests for teams endpoint"""
 
-    def test_teams_endpoint_works(self, token_file):
+    def test_teams_endpoint_works(self, api_token):
         """Verify teams endpoint returns valid data"""
-        resource = TeamsResource(token_file)
+        resource = TeamsResource(api_token)
 
         # Fetch teams (just first page, small page size)
         response = resource.fetch_list(page=1, page_size=5, get_all=False)
@@ -47,9 +54,9 @@ class TestTeamsEndpoint:
             assert 'id' in team
             assert 'name' in team
 
-    def test_teams_id_to_name_mapping(self, token_file):
+    def test_teams_id_to_name_mapping(self, api_token):
         """Verify team mapping functionality works"""
-        resource = TeamsResource(token_file)
+        resource = TeamsResource(api_token)
 
         # Build mapping
         mapping = resource.build_id_to_name_mapping()
@@ -68,9 +75,9 @@ class TestTeamsEndpoint:
 class TestIdeasEndpoint:
     """Smoke tests for ideas endpoint"""
 
-    def test_ideas_endpoint_works(self, token_file):
+    def test_ideas_endpoint_works(self, api_token):
         """Verify ideas endpoint returns valid data"""
-        resource = IdeasResource(token_file)
+        resource = IdeasResource(api_token)
 
         # Fetch ideas (small sample)
         response = resource.fetch_list(page=1, page_size=3, get_all=False)
@@ -80,9 +87,9 @@ class TestIdeasEndpoint:
         assert 'paging' in response
         assert isinstance(response['results'], list)
 
-    def test_ideas_detailed_fetch(self, token_file):
+    def test_ideas_detailed_fetch(self, api_token):
         """Verify detailed idea fetch works"""
-        resource = IdeasResource(token_file)
+        resource = IdeasResource(api_token)
 
         # Fetch one idea
         response = resource.fetch_list(page=1, page_size=1, get_all=False)
@@ -103,9 +110,9 @@ class TestIdeasEndpoint:
 class TestOKRsEndpoint:
     """Smoke tests for OKRs endpoint"""
 
-    def test_objectives_endpoint_works(self, token_file):
+    def test_objectives_endpoint_works(self, api_token):
         """Verify objectives endpoint returns valid data"""
-        resource = OKRsResource(token_file)
+        resource = OKRsResource(api_token)
 
         # Fetch objectives (small sample)
         response = resource.fetch_list(page=1, page_size=2, get_all=False)
@@ -115,9 +122,9 @@ class TestOKRsEndpoint:
         assert 'paging' in response
         assert isinstance(response['results'], list)
 
-    def test_key_results_endpoint_works(self, token_file):
+    def test_key_results_endpoint_works(self, api_token):
         """Verify key results endpoint works"""
-        resource = OKRsResource(token_file)
+        resource = OKRsResource(api_token)
 
         # Fetch objectives
         response = resource.fetch_list(page=1, page_size=2, get_all=False)
@@ -137,9 +144,9 @@ class TestOKRsEndpoint:
 class TestIdeaFormsEndpoint:
     """Smoke tests for idea forms endpoint"""
 
-    def test_idea_forms_endpoint_works(self, token_file):
+    def test_idea_forms_endpoint_works(self, api_token):
         """Verify idea forms endpoint returns valid data"""
-        resource = IdeaFormsResource(token_file)
+        resource = IdeaFormsResource(api_token)
 
         # Fetch idea forms (small sample)
         response = resource.fetch_list(page=1, page_size=2, get_all=False)
@@ -153,9 +160,9 @@ class TestIdeaFormsEndpoint:
 class TestObjectiveMappingEndpoint:
     """Smoke tests for objective mapping endpoint"""
 
-    def test_objective_mapping_uses_objectives_endpoint(self, token_file):
+    def test_objective_mapping_uses_objectives_endpoint(self, api_token):
         """Verify objective mapping can fetch objectives"""
-        resource = ObjectiveMappingResource(token_file)
+        resource = ObjectiveMappingResource(api_token)
 
         # Fetch objectives (uses strategy/objectives endpoint)
         response = resource.fetch_list(page=1, page_size=2, get_all=False)
@@ -169,9 +176,9 @@ class TestObjectiveMappingEndpoint:
 class TestAuthentication:
     """Smoke tests for authentication"""
 
-    def test_authentication_works(self, token_file):
+    def test_authentication_works(self, api_token):
         """Verify token authentication is working"""
-        resource = TeamsResource(token_file)
+        resource = TeamsResource(api_token)
 
         # This should succeed without raising authentication errors
         response = resource.fetch_list(page=1, page_size=1, get_all=False)
@@ -181,18 +188,10 @@ class TestAuthentication:
 
     def test_invalid_token_fails(self):
         """Verify invalid token is rejected"""
-        # Create temp file with invalid token
-        import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
-            f.write('invalid_token_12345')
-            temp_token = f.name
+        # Use an invalid token string directly
+        invalid_token = 'invalid_token_12345'
+        resource = TeamsResource(invalid_token)
 
-        try:
-            resource = TeamsResource(temp_token)
-
-            # This should fail with authentication error
-            with pytest.raises(SystemExit):  # Our code calls sys.exit(1) on auth failure
-                resource.fetch_list(page=1, page_size=1, get_all=False)
-        finally:
-            # Clean up temp file
-            os.unlink(temp_token)
+        # This should fail with authentication error
+        with pytest.raises(SystemExit):  # Our code calls sys.exit(1) on auth failure
+            resource.fetch_list(page=1, page_size=1, get_all=False)

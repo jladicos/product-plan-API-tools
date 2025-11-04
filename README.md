@@ -7,20 +7,23 @@ A flexible Python script to fetch data from the ProductPlan API and export it to
 - Fetch ideas from ProductPlan API
 - Fetch teams from ProductPlan API
 - Fetch idea forms from ProductPlan API with detailed information (includes custom fields, instructions, etc.)
-- **NEW: Fetch objectives and key results (OKRs) from ProductPlan API**
-- **NEW: SLA tracking for customer ideas** - Monitor response and roadmap decision timelines
+- Fetch objectives and key results (OKRs) from ProductPlan API
+- SLA tracking for customer ideas - Monitor response and roadmap decision timelines
+  - Excel or Google Sheets output
+  - Automatic URL generation for direct links to ideas
+  - Smart team column ordering (sorted by ID, positioned last for stability)
 - Export data to Excel format
-- **NEW: Export OKR data to Markdown format for documentation and reporting**
+- Export OKR data to Markdown format for documentation and reporting
 - Filter results using command-line arguments
-- **NEW: Filter objectives by status (active/all)**
+- Filter objectives by status (active/all)
 - Pagination support
-- Token-based authentication
+- Environment-based configuration (env/.env)
 - Automatic team columns on ideas exports (1 if assigned, 0 if not)
-- **NEW: Automatic team name resolution for objectives and key results**
+- Automatic team name resolution for objectives and key results
 - Automatic extraction of custom text fields into separate columns
 - Simplified `make` commands for ease of use
 - Docker containerization for easy deployment
-- **Organized file output** - All generated files saved to `files/` directory by default
+- Organized file output - All generated files saved to `files/` directory by default
 
 ## File Organization
 
@@ -44,19 +47,30 @@ All generated files are automatically saved to the `files/` directory:
 ### Getting Started
 
 1. Clone this repository:
-   ```
+   ```bash
    git clone https://github.com/jladicos/product-plan-API-tools
    cd productplan-api-client
    ```
 
-2. Run the setup script:
+2. Configure your environment:
+   ```bash
+   # Copy the sample environment file
+   cp env/.env.sample env/.env
+
+   # Edit env/.env and add your ProductPlan API token
+   # Required: PRODUCTPLAN_API_TOKEN
+   # Required: PRODUCTPLAN_URL_PREFIX
+   # Optional: Google Sheets credentials (see Google Sheets Setup below)
    ```
+
+3. Run the setup script to build the Docker image:
+   ```bash
    ./setup.sh
    ```
-   
+
    The setup script will:
    - Check for Docker and Make installation
-   - Help you create a token.txt file with your API token
+   - Help you create env/.env file if it doesn't exist
    - Build the Docker image
    - Provide quick-start instructions
 
@@ -98,45 +112,53 @@ If you want to use Google Sheets instead of Excel for SLA tracking, you'll need 
 
 ## Testing
 
-This project includes a comprehensive test suite with 219 total tests ensuring reliability and preventing regressions.
+This project includes a comprehensive test suite with 321 total tests ensuring reliability and preventing regressions.
 
 ### Test Types
 
-**Unit Tests** - Test individual components in isolation (209 tests):
-- Test all package components (resources, exporters, utils, CLI, SLA tracking)
+**Unit Tests** - Test individual components in isolation (283 tests):
+- Test all package components (resources, exporters, utils, CLI, SLA tracking, config)
 - Mock external dependencies (HTTP requests, file I/O)
 - Fast execution (~1 second)
 - 100% coverage of architecture
 - Run automatically on every change
 - Run with: `make test`
 
+**Integration Tests** - Test end-to-end workflows and command generation (28 tests):
+- Makefile command generation with proper variable substitution
+- SLA tracking workflows (init, update, URL generation, team ordering)
+- Test actual Docker commands without executing them
+- Verify system integration points
+- Run with: `make test`
+
 **Smoke Tests (Real API)** - Verify API contracts haven't changed (10 tests):
 - Hit actual ProductPlan API endpoints
 - Test authentication, teams, ideas, OKRs, idea forms, objective mapping
-- Require valid `token.txt` file
+- Require valid env/.env file with PRODUCTPLAN_API_TOKEN
 - Run occasionally (before releases, after API changes)
-- Skip gracefully if token file is missing
+- Skip gracefully if env/.env is missing
 - Run with: `make test-smoke`
 
 ### Running Tests
 
 ```bash
-# Run unit tests (recommended for development)
+# Run unit and integration tests (recommended for development)
 make test
 
-# Run smoke tests against real API (requires token.txt)
+# Run smoke tests against real API (requires env/.env with API token)
 make test-smoke
 
-# Run all tests (unit + smoke)
+# Run all tests (unit + integration + smoke)
 make test-all
 ```
 
 ### Test Results Summary
 
-- **Unit Tests**: 209/209 passing (100%)
+- **Unit Tests**: 283/283 passing (100%)
+- **Integration Tests**: 28/28 passing (100%)
 - **Smoke Tests**: 10/10 passing (100%)
-- **Total Tests**: 219/219 passing (100%)
-- **All Tests Verified**: ✅ November 3, 2025
+- **Total Tests**: 321/321 passing (100%)
+- **All Tests Verified**: ✅ November 4, 2025
 
 ### Test Coverage
 
@@ -202,12 +224,21 @@ The SLA tracking system monitors two key metrics:
 
 ```bash
 # Initialize SLA tracking spreadsheet (first-time setup)
+# Auto-detects output: Google Sheets if configured, Excel otherwise
 make sla-init
 
 # Update SLA tracking spreadsheet (daily updates)
 make sla-update
 
-# Custom output filename
+# Force Excel output (even if Google Sheets is configured)
+make sla-init OUTPUT_TYPE=excel
+make sla-update OUTPUT_TYPE=excel
+
+# Force Google Sheets output (requires Google Sheets configuration)
+make sla-init OUTPUT_TYPE=sheets
+make sla-update OUTPUT_TYPE=sheets
+
+# Custom output filename (implies Excel format)
 make sla-init OUTPUT=files/custom_sla.xlsx
 make sla-update OUTPUT=files/custom_sla.xlsx
 ```
@@ -235,18 +266,16 @@ make sla-update OUTPUT=files/custom_sla.xlsx
 
 #### Spreadsheet Column Structure
 
-The SLA tracking spreadsheet includes:
+The SLA tracking spreadsheet includes columns in this specific order:
 
 **Core Columns:**
-- `id`, `name`, `description`, `customer`, `source_name`, `source_email`
+- `id`: Idea ID (used as unique identifier)
+- `url`: Direct link to the idea in ProductPlan (auto-generated from PRODUCTPLAN_URL_PREFIX + id)
+- `name`, `description`, `customer`, `source_name`, `source_email`: Core idea information
 
 **Timestamps:**
 - `created_at`: When idea was created in ProductPlan
 - `updated_at`: When idea was last modified
-
-**Status:**
-- `idea_status`: Current status from custom dropdown ("On deck", "In Review", "Accepted", "Rejected")
-- `location_status`: Visibility status (visible, hidden, archived)
 
 **SLA Tracking:**
 - `response_sla`: Date when status first changed from "On deck" (historical, never cleared)
@@ -254,11 +283,18 @@ The SLA tracking spreadsheet includes:
 - `currently_meets_response_sla`: Boolean - does idea currently meet 14-day response SLA?
 - `currently_meets_roadmap_sla`: Boolean - does idea currently meet 60-day roadmap SLA?
 
-**Team Assignments:**
-- Binary columns (1/0) for each team indicating assignment
+**Status:**
+- `idea_status`: Current status from custom dropdown ("On deck", "In Review", "Accepted", "Rejected")
+- `location_status`: Visibility status (visible, hidden, archived)
 
 **Custom Fields:**
-- Additional custom text and dropdown fields from ProductPlan
+- Additional custom text and dropdown fields from ProductPlan (dynamic, varies by instance)
+
+**Team Assignments (Always Last):**
+- Binary columns (1/0) for each team indicating assignment
+- **Important**: Team columns are always positioned LAST (after all other columns including custom fields)
+- Sorted by team ID numerically (e.g., "Team_1", "Team_2", "Team_100")
+- This ensures new teams or custom fields don't shift existing column positions
 
 #### Filtering Rules
 
@@ -399,16 +435,17 @@ docker run --rm -v $(pwd):/app productplan-api \
 | `OUTPUT` | Output filename | files/productplan_data.xlsx |
 | `PAGE` | Page number | 1 |
 | `PAGE_SIZE` | Number of items per page | 200 |
-| `TOKEN_FILE` | File containing the API token | token.txt |
 | `ALL_PAGES` | Fetch all pages | true |
 | `FILTERS` | Space-separated key:value pairs | (none) |
 | `OBJECTIVE_STATUS` | Filter objectives by status | active |
 | `OUTPUT_FORMAT` | Output format for OKRs | excel |
+| `OUTPUT_TYPE` | SLA storage type | auto |
 
 ### Docker Command Options
 
-- `--endpoint`: API endpoint to query (available: 'ideas', 'teams', 'idea-forms', 'okrs')
-- `--token-file`: File containing the API token (default: token.txt)
+When using Docker directly (not recommended - use `make` commands instead):
+
+- `--endpoint`: API endpoint to query (available: 'ideas', 'teams', 'idea-forms', 'okrs', 'sla-init', 'sla-update')
 - `--page`: Page number (default: 1)
 - `--page-size`: Number of items per page (default: 200, max: 500)
 - `--filter`: Filter results (can be used multiple times with KEY VALUE pairs)
@@ -416,6 +453,9 @@ docker run --rm -v $(pwd):/app productplan-api \
 - `--all-pages`: Fetch all pages of results automatically (ignores the --page parameter)
 - `--objective-status`: Filter objectives by status (available: 'active', 'all'; default: active)
 - `--output-format`: Output format for OKRs (available: 'excel', 'markdown'; default: excel)
+- `--output-type`: Storage type for SLA tracking (available: 'auto', 'excel', 'sheets'; default: auto)
+
+**Note:** API token is loaded from `env/.env` file (PRODUCTPLAN_API_TOKEN variable)
 
 ## Filtering
 
@@ -514,15 +554,31 @@ No key results
 
 ### Common Issues
 
-1. **Authentication Failed (401)**:
-   - Verify that your token in `token.txt` is correct and not expired
-   - Ensure there are no extra spaces or newlines in the token file
+1. **Configuration File Missing**:
+   - Error: "Configuration file not found: env/.env"
+   - Solution: Copy `env/.env.sample` to `env/.env` and add your API token
+   - Command: `cp env/.env.sample env/.env`
 
-2. **Permission Error When Writing Output**:
+2. **Authentication Failed (401)**:
+   - Verify that `PRODUCTPLAN_API_TOKEN` in `env/.env` is correct and not expired
+   - Ensure there are no extra spaces or quotes around the token value
+   - Check that the env/.env file is in the correct location
+
+3. **Missing URL Prefix**:
+   - Error: "PRODUCTPLAN_URL_PREFIX is required"
+   - Solution: Set `PRODUCTPLAN_URL_PREFIX` in `env/.env`
+   - Example: `PRODUCTPLAN_URL_PREFIX=https://app.productplan.com/discovery/ideas/`
+
+4. **Google Sheets Configuration Error**:
+   - Error: "Partial Google Sheets configuration detected"
+   - Solution: Either set ALL three Google Sheets variables or NONE
+   - Required: GOOGLE_CREDENTIALS_FILE, GOOGLE_SHEET_ID, GOOGLE_SHEET_NAME
+
+5. **Permission Error When Writing Output**:
    - Check that the current directory is writable
    - Try specifying a different output path with the OUTPUT parameter
 
-3. **Docker Not Running**:
+6. **Docker Not Running**:
    - Make sure Docker Desktop is running on your machine
    - Try restarting Docker if you're having issues
 

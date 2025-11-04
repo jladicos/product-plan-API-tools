@@ -19,14 +19,6 @@ def mock_token():
 
 
 @pytest.fixture
-def mock_token_file(tmp_path, mock_token):
-    """Create a temporary token file for testing"""
-    token_file = tmp_path / "test_token.txt"
-    token_file.write_text(mock_token)
-    return str(token_file)
-
-
-@pytest.fixture
 def sample_ideas_response(fixtures_dir):
     """Load sample ideas API response from fixture"""
     fixture_file = fixtures_dir / "ideas_response.json"

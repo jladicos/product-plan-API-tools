@@ -110,7 +110,7 @@ class TestSLAInit:
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
             # Call sla_init()
-            sla_init(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_init(temp_output_file, 'fake_token.txt')
 
             # Verify file was created
             assert os.path.exists(temp_output_file)
@@ -160,7 +160,7 @@ class TestSLAInit:
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
             # Call sla_init()
-            sla_init(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_init(temp_output_file, 'fake_token.txt')
 
             # Read the file back
             storage = ExcelSLAStorage(temp_output_file)
@@ -209,7 +209,7 @@ class TestSLAInit:
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
             # Call sla_init()
-            sla_init(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_init(temp_output_file, 'fake_token.txt')
 
             # Read the file back
             storage = ExcelSLAStorage(temp_output_file)
@@ -237,11 +237,11 @@ class TestSLAInit:
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
             # Call sla_init()
-            sla_init(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_init(temp_output_file, 'fake_token.txt')
 
             # Verify API calls
-            MockIdeasResource.assert_called_once_with('fake_token')
-            MockTeamsResource.assert_called_once_with('fake_token')
+            MockIdeasResource.assert_called_once_with('fake_token.txt')
+            MockTeamsResource.assert_called_once_with('fake_token.txt')
 
             # Verify fetch_enhanced was called with correct parameters
             mock_ideas_instance.fetch_enhanced.assert_called_once_with(
@@ -321,7 +321,7 @@ class TestSLAInit:
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
             # Call sla_init()
-            sla_init(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_init(temp_output_file, 'fake_token.txt')
 
             # Verify file was created
             assert os.path.exists(temp_output_file)
@@ -354,7 +354,7 @@ class TestSLAInit:
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas/'
 
             # Call sla_init()
-            sla_init(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_init(temp_output_file, 'fake_token.txt')
 
             # Read the file back
             storage = ExcelSLAStorage(temp_output_file)
@@ -424,7 +424,7 @@ class TestSLAInit:
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
             # Call sla_init()
-            sla_init(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_init(temp_output_file, 'fake_token.txt')
 
             # Read the file back
             storage = ExcelSLAStorage(temp_output_file)
@@ -519,7 +519,7 @@ class TestSLAInit:
 
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
-            sla_init(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_init(temp_output_file, 'fake_token.txt')
 
             storage = ExcelSLAStorage(temp_output_file)
             df = storage.read()
@@ -587,7 +587,7 @@ class TestSLAInit:
 
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
-            sla_init(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_init(temp_output_file, 'fake_token.txt')
 
             storage = ExcelSLAStorage(temp_output_file)
             df = storage.read()
@@ -656,7 +656,7 @@ class TestSLAInit:
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
             # Should not crash
-            sla_init(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_init(temp_output_file, 'fake_token.txt')
 
             storage = ExcelSLAStorage(temp_output_file)
             df = storage.read()
@@ -702,7 +702,7 @@ class TestSLAInit:
 
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
-            sla_init(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_init(temp_output_file, 'fake_token.txt')
 
             storage = ExcelSLAStorage(temp_output_file)
             df = storage.read()
@@ -754,7 +754,7 @@ class TestSLAInit:
 
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
-            sla_init(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_init(temp_output_file, 'fake_token.txt')
 
             storage = ExcelSLAStorage(temp_output_file)
             df = storage.read()
@@ -813,7 +813,7 @@ class TestSLAInit:
 
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
-            sla_init(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_init(temp_output_file, 'fake_token.txt')
 
             storage = ExcelSLAStorage(temp_output_file)
             df = storage.read()
@@ -939,7 +939,7 @@ class TestSLAUpdate:
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
             # Call sla_update() on non-existent file
-            sla_update(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_update(temp_output_file, 'fake_token.txt')
 
             # Verify file was created (which means init was called)
             assert os.path.exists(temp_output_file)
@@ -989,7 +989,7 @@ class TestSLAUpdate:
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
             # Call sla_update()
-            sla_update(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_update(temp_output_file, 'fake_token.txt')
 
             # Read updated spreadsheet
             df = storage.read()
@@ -1053,7 +1053,7 @@ class TestSLAUpdate:
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
             # Call sla_update()
-            sla_update(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_update(temp_output_file, 'fake_token.txt')
 
             # Read updated spreadsheet
             df = storage.read()
@@ -1118,7 +1118,7 @@ class TestSLAUpdate:
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
             # Call sla_update()
-            sla_update(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_update(temp_output_file, 'fake_token.txt')
 
             # Read updated spreadsheet
             df = storage.read()
@@ -1171,7 +1171,7 @@ class TestSLAUpdate:
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
             # Call sla_update()
-            sla_update(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_update(temp_output_file, 'fake_token.txt')
 
             # Read updated spreadsheet
             df = storage.read()
@@ -1228,7 +1228,7 @@ class TestSLAUpdate:
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
             # Call sla_update()
-            sla_update(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_update(temp_output_file, 'fake_token.txt')
 
             # Read updated spreadsheet
             df = storage.read()
@@ -1282,7 +1282,7 @@ class TestSLAUpdate:
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
             # Call sla_update()
-            sla_update(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_update(temp_output_file, 'fake_token.txt')
 
             # Read updated spreadsheet
             df = storage.read()
@@ -1327,7 +1327,7 @@ class TestSLAUpdate:
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
             # Call sla_update()
-            sla_update(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_update(temp_output_file, 'fake_token.txt')
 
             # Verify fetch_enhanced was called with correct lookback date
             # Should be 14 days before fixed_now
@@ -1424,7 +1424,7 @@ class TestSLAUpdate:
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas/'
 
             # Call sla_update()
-            sla_update(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_update(temp_output_file, 'fake_token.txt')
 
             # Read updated spreadsheet
             df = storage.read()
@@ -1526,7 +1526,7 @@ class TestSLAUpdate:
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
             # Call sla_update()
-            sla_update(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_update(temp_output_file, 'fake_token.txt')
 
             # Read updated spreadsheet
             df = storage.read()
@@ -1655,7 +1655,7 @@ class TestSLAUpdate:
             mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
 
             # Call sla_update()
-            sla_update(ExcelSLAStorage(temp_output_file), "fake_token")
+            sla_update(temp_output_file, 'fake_token.txt')
 
             # Read updated spreadsheet
             df = storage.read()

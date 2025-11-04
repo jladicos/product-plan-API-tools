@@ -12,9 +12,10 @@ from productplan_api_tools.api.okrs import OKRsResource
 class TestOKRsResourceEndpoint:
     """Test OKRsResource endpoint configuration"""
 
+    @patch('builtins.open', mock_open(read_data="test_token"))
     def test_endpoint_path(self):
         """Test that endpoint_path is correctly set"""
-        resource = OKRsResource(token="test_token")
+        resource = OKRsResource()
         assert resource.endpoint_path == "strategy/objectives"
 
 
@@ -22,6 +23,7 @@ class TestOKRsResourceFetchKeyResults:
     """Test OKRsResource.fetch_key_results() method"""
 
     @patch.object(OKRsResource, '_make_request')
+    @patch('builtins.open', mock_open(read_data="test_token"))
     def test_fetch_key_results_single_page(self, mock_make_request):
         """Test fetching key results for an objective"""
         mock_make_request.return_value = {
@@ -31,7 +33,7 @@ class TestOKRsResourceFetchKeyResults:
             ]
         }
 
-        resource = OKRsResource(token="test_token")
+        resource = OKRsResource()
         result = resource.fetch_key_results(objective_id=42)
 
         assert len(result["results"]) == 2
@@ -40,13 +42,14 @@ class TestOKRsResourceFetchKeyResults:
         assert "strategy/objectives/42/key_results" in call_args[0][0]
 
     @patch.object(OKRsResource, '_fetch_all_pages')
+    @patch('builtins.open', mock_open(read_data="test_token"))
     def test_fetch_key_results_all_pages(self, mock_fetch_all_pages):
         """Test fetching all pages of key results"""
         mock_fetch_all_pages.return_value = {
             "results": [{"id": 1}, {"id": 2}, {"id": 3}]
         }
 
-        resource = OKRsResource(token="test_token")
+        resource = OKRsResource()
         result = resource.fetch_key_results(objective_id=42, get_all=True)
 
         assert len(result["results"]) == 3
@@ -59,6 +62,7 @@ class TestOKRsResourceFetchEnhanced:
     @patch.object(OKRsResource, 'fetch_key_results')
     @patch.object(OKRsResource, 'fetch_details')
     @patch.object(OKRsResource, 'fetch_list')
+    @patch('builtins.open', mock_open(read_data="test_token"))
     def test_fetch_enhanced_basic_with_key_results(self, mock_fetch_list, mock_fetch_details, mock_fetch_key_results):
         """Test basic OKR fetching with key results"""
         # Mock objectives list
@@ -87,7 +91,7 @@ class TestOKRsResourceFetchEnhanced:
         # Provide team mapping
         team_mapping = {10: "Engineering"}
 
-        resource = OKRsResource(token="test_token")
+        resource = OKRsResource()
         results = resource.fetch_enhanced(team_mapping=team_mapping)
 
         # Should have one row (one key result)
@@ -101,6 +105,7 @@ class TestOKRsResourceFetchEnhanced:
     @patch.object(OKRsResource, 'fetch_key_results')
     @patch.object(OKRsResource, 'fetch_details')
     @patch.object(OKRsResource, 'fetch_list')
+    @patch('builtins.open', mock_open(read_data="test_token"))
     def test_fetch_enhanced_objective_without_key_results(self, mock_fetch_list, mock_fetch_details, mock_fetch_key_results):
         """Test objective with no key results creates one row with empty fields"""
         mock_fetch_list.return_value = {
@@ -117,7 +122,7 @@ class TestOKRsResourceFetchEnhanced:
         # No key results
         mock_fetch_key_results.return_value = {"results": []}
 
-        resource = OKRsResource(token="test_token")
+        resource = OKRsResource()
         results = resource.fetch_enhanced(team_mapping={})
 
         # Should have one row with empty key result fields
@@ -130,6 +135,7 @@ class TestOKRsResourceFetchEnhanced:
     @patch.object(OKRsResource, 'fetch_key_results')
     @patch.object(OKRsResource, 'fetch_details')
     @patch.object(OKRsResource, 'fetch_list')
+    @patch('builtins.open', mock_open(read_data="test_token"))
     def test_fetch_enhanced_multiple_key_results(self, mock_fetch_list, mock_fetch_details, mock_fetch_key_results):
         """Test objective with multiple key results creates multiple rows"""
         mock_fetch_list.return_value = {
@@ -151,7 +157,7 @@ class TestOKRsResourceFetchEnhanced:
             ]
         }
 
-        resource = OKRsResource(token="test_token")
+        resource = OKRsResource()
         results = resource.fetch_enhanced(team_mapping={})
 
         # Should have 3 rows (one per key result)
@@ -163,6 +169,7 @@ class TestOKRsResourceFetchEnhanced:
     @patch.object(OKRsResource, 'fetch_key_results')
     @patch.object(OKRsResource, 'fetch_details')
     @patch.object(OKRsResource, 'fetch_list')
+    @patch('builtins.open', mock_open(read_data="test_token"))
     def test_fetch_enhanced_team_name_resolution(self, mock_fetch_list, mock_fetch_details, mock_fetch_key_results):
         """Test that team IDs are resolved to names"""
         mock_fetch_list.return_value = {
@@ -179,7 +186,7 @@ class TestOKRsResourceFetchEnhanced:
 
         team_mapping = {10: "Engineering", 20: "Product"}
 
-        resource = OKRsResource(token="test_token")
+        resource = OKRsResource()
         results = resource.fetch_enhanced(team_mapping=team_mapping)
 
         # Should have both team names
@@ -188,6 +195,7 @@ class TestOKRsResourceFetchEnhanced:
     @patch.object(OKRsResource, 'fetch_key_results')
     @patch.object(OKRsResource, 'fetch_details')
     @patch.object(OKRsResource, 'fetch_list')
+    @patch('builtins.open', mock_open(read_data="test_token"))
     def test_fetch_enhanced_fetches_teams_if_no_mapping(self, mock_fetch_list, mock_fetch_details, mock_fetch_key_results):
         """Test that teams are fetched internally if no mapping provided"""
         mock_fetch_list.return_value = {"results": []}
@@ -197,7 +205,7 @@ class TestOKRsResourceFetchEnhanced:
                 "results": [{"id": 10, "name": "Team1"}]
             }
 
-            resource = OKRsResource(token="test_token")
+            resource = OKRsResource()
             results = resource.fetch_enhanced(team_mapping=None)
 
             # Should have made a request to teams endpoint
@@ -207,6 +215,7 @@ class TestOKRsResourceFetchEnhanced:
     @patch.object(OKRsResource, 'fetch_key_results')
     @patch.object(OKRsResource, 'fetch_details')
     @patch.object(OKRsResource, 'fetch_list')
+    @patch('builtins.open', mock_open(read_data="test_token"))
     def test_fetch_enhanced_status_filter_active(self, mock_fetch_list, mock_fetch_details, mock_fetch_key_results):
         """Test status filtering for active objectives only"""
         mock_fetch_list.return_value = {
@@ -233,7 +242,7 @@ class TestOKRsResourceFetchEnhanced:
         mock_fetch_details.side_effect = lambda obj_id: fetch_details_side_effect(obj_id)
         mock_fetch_key_results.return_value = {"results": []}
 
-        resource = OKRsResource(token="test_token")
+        resource = OKRsResource()
         results = resource.fetch_enhanced(status_filter="active", team_mapping={})
 
         # Should only include active objectives
@@ -245,6 +254,7 @@ class TestOKRsResourceFetchEnhanced:
     @patch.object(OKRsResource, 'fetch_key_results')
     @patch.object(OKRsResource, 'fetch_details')
     @patch.object(OKRsResource, 'fetch_list')
+    @patch('builtins.open', mock_open(read_data="test_token"))
     def test_fetch_enhanced_status_filter_all(self, mock_fetch_list, mock_fetch_details, mock_fetch_key_results):
         """Test status_filter='all' includes all objectives"""
         mock_fetch_list.return_value = {
@@ -258,18 +268,19 @@ class TestOKRsResourceFetchEnhanced:
 
         mock_fetch_key_results.return_value = {"results": []}
 
-        resource = OKRsResource(token="test_token")
+        resource = OKRsResource()
         results = resource.fetch_enhanced(status_filter="all", team_mapping={})
 
         # Should include both
         assert len(results) == 2
 
     @patch.object(OKRsResource, 'fetch_list')
+    @patch('builtins.open', mock_open(read_data="test_token"))
     def test_fetch_enhanced_empty_objectives(self, mock_fetch_list):
         """Test handling of empty objectives list"""
         mock_fetch_list.return_value = {"results": []}
 
-        resource = OKRsResource(token="test_token")
+        resource = OKRsResource()
         results = resource.fetch_enhanced(team_mapping={})
 
         assert results == []

@@ -389,6 +389,10 @@ class TestGoogleSheetsSLAStorage(unittest.TestCase):
         mock_client.open_by_key.return_value = mock_spreadsheet
         mock_spreadsheet.worksheet.return_value = mock_worksheet
 
+        # Imports needed for this test
+        from datetime import datetime
+        import pandas as pd
+
         # Create storage
         storage = GoogleSheetsSLAStorage(
             self.credentials_file,
@@ -410,12 +414,25 @@ class TestGoogleSheetsSLAStorage(unittest.TestCase):
         call_args = mock_worksheet.update.call_args
         written_data = call_args[0][0]
 
+        # CRITICAL: Verify that value_input_option='USER_ENTERED' is passed
+        # Without this, Google Sheets treats dates as text strings!
+        kwargs = call_args[1] if len(call_args) > 1 else {}
+        self.assertEqual(kwargs.get('value_input_option'), 'USER_ENTERED',
+                        "Must use USER_ENTERED so Google Sheets parses date strings as dates")
+
         # Verify date formatting
         # Header row + data row
         self.assertEqual(len(written_data), 2)
-        # Check date format in data row
-        self.assertEqual(written_data[1][1], '2025-01-15 10:30:45')
-        self.assertEqual(written_data[1][2], '2025-01-20 12:00:00')
+        # Check dates are formatted as ISO strings for Google Sheets
+        # With USER_ENTERED value input option, Google Sheets will parse these as dates
+        created_at_str = written_data[1][1]
+        response_sla_str = written_data[1][2]
+
+        # Should be ISO 8601 format strings (YYYY-MM-DD HH:MM:SS)
+        self.assertIsInstance(created_at_str, str)
+        self.assertIsInstance(response_sla_str, str)
+        self.assertEqual(created_at_str, '2025-01-15 10:30:45')
+        self.assertEqual(response_sla_str, '2025-01-20 12:00:00')
 
     @patch('productplan_api_tools.sla.storage.GSPREAD_AVAILABLE', True)
     @patch('productplan_api_tools.sla.storage.gspread')
@@ -839,16 +856,27 @@ class TestGoogleSheetsSLAStorage(unittest.TestCase):
             cols=4
         )
 
-        # Verify header row was added
-        header_call = mock_new_runs_sheet.append_row.call_args_list[0]
-        self.assertEqual(header_call[0][0], ['type', 'timestamp', 'records_added', 'records_updated'])
+        # Verify header + data were written together in one call (prevents append_row overwriting header)
+        # update() is called with (values, range) - values is list of rows, range is 'A1'
+        update_call = mock_new_runs_sheet.update.call_args
+        values = update_call[0][0]
 
-        # Verify data row was added
-        data_call = mock_new_runs_sheet.append_row.call_args_list[1]
-        data_row = data_call[0][0]
-        self.assertEqual(data_row[0], 'init')
-        self.assertEqual(data_row[2], 5)
-        self.assertEqual(data_row[3], 0)
+        # Should have 2 rows: header and data
+        self.assertEqual(len(values), 2)
+
+        # First row should be header
+        self.assertEqual(values[0], ['type', 'timestamp', 'records_added', 'records_updated'])
+
+        # Second row should be data
+        self.assertEqual(values[1][0], 'init')  # type
+        self.assertEqual(values[1][2], 5)  # records_added
+        self.assertEqual(values[1][3], 0)  # records_updated
+
+        # Range should be 'A1'
+        self.assertEqual(update_call[0][1], 'A1')
+
+        # Verify append_row was NOT called (we wrote both rows with update)
+        mock_new_runs_sheet.append_row.assert_not_called()
 
         # Verify header formatting (bold)
         mock_new_runs_sheet.format.assert_called_once_with(
@@ -887,6 +915,9 @@ class TestGoogleSheetsSLAStorage(unittest.TestCase):
             return mock_worksheet
 
         mock_spreadsheet.worksheet.side_effect = worksheet_side_effect
+
+        # Mock get_all_values to return existing header (so append_row is called)
+        mock_runs_sheet.get_all_values.return_value = [['type', 'timestamp', 'records_added', 'records_updated']]
 
         # Create storage
         storage = GoogleSheetsSLAStorage(
@@ -953,6 +984,9 @@ class TestGoogleSheetsSLAStorage(unittest.TestCase):
 
         mock_spreadsheet.worksheet.side_effect = worksheet_side_effect
 
+        # Mock get_all_values to return existing header (so append_row is called)
+        mock_runs_sheet.get_all_values.return_value = [['type', 'timestamp', 'records_added', 'records_updated']]
+
         # Create storage
         storage = GoogleSheetsSLAStorage(
             self.credentials_file,
@@ -964,7 +998,7 @@ class TestGoogleSheetsSLAStorage(unittest.TestCase):
         storage.record_run('init', records_added=1, records_updated=0)
 
         # Get the timestamp that was written
-        call_args = mock_runs_sheet.append_row.call_args_list[0][0][0]
+        call_args = mock_runs_sheet.append_row.call_args[0][0]
         timestamp_str = call_args[1]
 
         # Verify timestamp format (YYYY-MM-DD HH:MM:SS)
@@ -1016,6 +1050,9 @@ class TestGoogleSheetsSLAStorage(unittest.TestCase):
 
         mock_spreadsheet.worksheet.side_effect = worksheet_side_effect
 
+        # Mock get_all_values to return existing header (so append_row is called)
+        mock_runs_sheet.get_all_values.return_value = [['type', 'timestamp', 'records_added', 'records_updated']]
+
         # Create storage
         storage = GoogleSheetsSLAStorage(
             self.credentials_file,
@@ -1027,7 +1064,7 @@ class TestGoogleSheetsSLAStorage(unittest.TestCase):
         storage.record_run('update', records_added=0, records_updated=0)
 
         # Verify zeros are preserved
-        call_args = mock_runs_sheet.append_row.call_args_list[0][0][0]
+        call_args = mock_runs_sheet.append_row.call_args[0][0]
         self.assertEqual(call_args[2], 0)  # records_added
         self.assertEqual(call_args[3], 0)  # records_updated
 
@@ -1063,6 +1100,9 @@ class TestGoogleSheetsSLAStorage(unittest.TestCase):
 
         mock_spreadsheet.worksheet.side_effect = worksheet_side_effect
 
+        # Mock get_all_values to return existing header (so append_row is called)
+        mock_runs_sheet.get_all_values.return_value = [['type', 'timestamp', 'records_added', 'records_updated']]
+
         # Create storage
         storage = GoogleSheetsSLAStorage(
             self.credentials_file,
@@ -1074,7 +1114,7 @@ class TestGoogleSheetsSLAStorage(unittest.TestCase):
         storage.record_run('init', records_added=9999, records_updated=8888)
 
         # Verify large numbers are preserved
-        call_args = mock_runs_sheet.append_row.call_args_list[0][0][0]
+        call_args = mock_runs_sheet.append_row.call_args[0][0]
         self.assertEqual(call_args[2], 9999)  # records_added
         self.assertEqual(call_args[3], 8888)  # records_updated
 

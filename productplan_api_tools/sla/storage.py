@@ -423,22 +423,36 @@ class GoogleSheetsSLAStorage:
         # Clear existing data (clear-and-rewrite behavior)
         worksheet.clear()
 
-        # Format dates as strings for Google Sheets
+        # Make a copy for processing
         df_copy = df.copy()
+
+        # Convert datetime columns to proper format for Google Sheets
+        # Google Sheets recognizes datetime objects, but we need to:
+        # 1. Convert pandas Timestamps to Python datetime objects
+        # 2. Remove timezone info (Google Sheets doesn't handle tz-aware dates)
         date_columns = ['created_at', 'updated_at', 'response_sla', 'roadmap_sla']
         for col in date_columns:
             if col in df_copy.columns:
-                # Convert datetime to string with Excel-like format
-                df_copy[col] = df_copy[col].apply(
-                    lambda x: x.strftime('%Y-%m-%d %H:%M:%S') if pd.notna(x) else ''
-                )
+                def convert_datetime(x):
+                    if pd.isna(x):
+                        return None
+                    # Convert pandas Timestamp to Python datetime
+                    if isinstance(x, pd.Timestamp):
+                        x = x.to_pydatetime()
+                    # Remove timezone info if present
+                    if hasattr(x, 'replace') and x.tzinfo is not None:
+                        x = x.replace(tzinfo=None)
+                    return x
+
+                df_copy[col] = df_copy[col].apply(convert_datetime)
 
         # Convert DataFrame to list of lists for gspread
         # Include header row
-        # Convert all values to strings to avoid complex types (lists, dicts, etc.)
         header = [str(col) for col in df_copy.columns]
 
-        # Convert each cell to a simple string/number
+        # Convert each cell to appropriate type for Google Sheets
+        # Keep datetime objects as-is, convert complex types to strings
+        from datetime import datetime
         data_rows = []
         for _, row in df_copy.iterrows():
             row_values = []
@@ -453,6 +467,22 @@ class GoogleSheetsSLAStorage:
                     row_values.append('')
                 elif pd.isna(val):
                     row_values.append('')
+                elif isinstance(val, pd.Timestamp):
+                    # Convert pandas Timestamp to ISO string for Google Sheets
+                    # Google Sheets will parse this as a date when using USER_ENTERED
+                    dt = val.to_pydatetime()
+                    # Remove timezone info if present (Google Sheets doesn't handle tz-aware dates)
+                    if dt.tzinfo is not None:
+                        dt = dt.replace(tzinfo=None)
+                    # Format as ISO 8601 which Google Sheets recognizes
+                    row_values.append(dt.isoformat(sep=' ', timespec='seconds'))
+                elif isinstance(val, datetime):
+                    # Convert Python datetime to ISO string for Google Sheets
+                    # Remove timezone info if present
+                    if val.tzinfo is not None:
+                        val = val.replace(tzinfo=None)
+                    # Format as ISO 8601 which Google Sheets recognizes
+                    row_values.append(val.isoformat(sep=' ', timespec='seconds'))
                 else:
                     row_values.append(val)
             data_rows.append(row_values)
@@ -460,7 +490,8 @@ class GoogleSheetsSLAStorage:
         values = [header] + data_rows
 
         # Write all data at once (more efficient)
-        worksheet.update(values, 'A1')
+        # Use value_input_option='USER_ENTERED' so Google Sheets parses date strings as dates
+        worksheet.update(values, 'A1', value_input_option='USER_ENTERED')
 
         # Format header row (bold)
         worksheet.format('1:1', {'textFormat': {'bold': True}})
@@ -522,21 +553,32 @@ class GoogleSheetsSLAStorage:
         # Try to access Runs sheet, create if doesn't exist
         try:
             runs_sheet = self._spreadsheet.worksheet(runs_sheet_name)
+            # Sheet exists - check if it has a header row
+            all_values = runs_sheet.get_all_values()
+            if not all_values or all_values[0] != ['type', 'timestamp', 'records_added', 'records_updated']:
+                # No header or wrong header - write header + data together
+                header_row = ['type', 'timestamp', 'records_added', 'records_updated']
+                values = [header_row, run_record]
+                runs_sheet.clear()  # Clear any partial data
+                runs_sheet.update(values, 'A1')
+                runs_sheet.format('1:1', {'textFormat': {'bold': True}})
+            else:
+                # Header exists - just append the run record
+                runs_sheet.append_row(run_record)
         except gspread.exceptions.WorksheetNotFound:
-            # Create Runs sheet with header row
+            # Create Runs sheet with header row AND first data row
+            # Write both together to avoid append_row overwriting header on empty sheet
             runs_sheet = self._spreadsheet.add_worksheet(
                 title=runs_sheet_name,
                 rows=100,  # Start with 100 rows
                 cols=4     # 4 columns: type, timestamp, records_added, records_updated
             )
-            # Add header row
-            header = ['type', 'timestamp', 'records_added', 'records_updated']
-            runs_sheet.append_row(header)
+            # Write header + data together (same pattern as main write() method)
+            header_row = ['type', 'timestamp', 'records_added', 'records_updated']
+            values = [header_row, run_record]  # Header in row 1, data in row 2
+            runs_sheet.update(values, 'A1')
             # Format header row (bold)
             runs_sheet.format('1:1', {'textFormat': {'bold': True}})
-
-        # Append the run record
-        runs_sheet.append_row(run_record)
 
 
 def create_storage(output_path: Optional[str] = None, output_type: str = "auto") -> SLAStorage:

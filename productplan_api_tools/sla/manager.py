@@ -344,8 +344,9 @@ def sla_update(storage: SLAStorage, token: str) -> None:
         sla_init(storage, token)
         return
 
-    # Calculate lookback date for API filter
-    lookback_date = (datetime.now() - timedelta(days=SLA_UPDATE_LOOKBACK_DAYS)).strftime('%Y-%m-%d')
+    # Calculate lookback date for filtering
+    lookback_datetime = datetime.now() - timedelta(days=SLA_UPDATE_LOOKBACK_DAYS)
+    lookback_date = lookback_datetime.strftime('%Y-%m-%d')
     print(f"\nFetching ideas updated since: {lookback_date} ({SLA_UPDATE_LOOKBACK_DAYS}-day lookback)")
 
     # Create API resources
@@ -353,15 +354,47 @@ def sla_update(storage: SLAStorage, token: str) -> None:
     teams_resource = TeamsResource(token)
 
     # Fetch ideas updated in lookback period
-    print("\nFetching recently updated ideas from ProductPlan API...")
-    fetched_ideas = ideas_resource.fetch_enhanced(
+    # NOTE: ProductPlan API does not currently support date-based filtering on the ideas endpoint.
+    # We pass the filter anyway (in case they add support in the future), but we MUST apply
+    # client-side filtering to avoid processing all ideas on every update.
+    print("\nFetching ideas from ProductPlan API...")
+    print("NOTE: API does not support date filtering - will apply client-side filter after fetch")
+    all_ideas = ideas_resource.fetch_enhanced(
         page=1,
         page_size=200,
-        filters={'updated_at_gteq': lookback_date},
+        filters={'updated_at_gteq': lookback_date},  # Pass filter (may be ignored by API)
         get_all=True,
         location_status="all"  # Include archived ideas
     )
-    print(f"Fetched {len(fetched_ideas)} recently updated ideas")
+    print(f"Fetched {len(all_ideas)} ideas from API")
+
+    # Client-side filtering: Only process ideas updated within lookback period
+    print(f"Applying client-side date filter (updated_at >= {lookback_date})...")
+    fetched_ideas = []
+    for idea in all_ideas:
+        updated_at = idea.get('updated_at')
+        if updated_at:
+            # Parse the timestamp (ISO format from API)
+            try:
+                if isinstance(updated_at, str):
+                    updated_dt = pd.to_datetime(updated_at, utc=True)
+                else:
+                    updated_dt = pd.to_datetime(updated_at)
+
+                # Make lookback_datetime timezone-aware for comparison
+                lookback_dt_aware = pd.Timestamp(lookback_datetime, tz='UTC')
+
+                if updated_dt >= lookback_dt_aware:
+                    fetched_ideas.append(idea)
+            except (ValueError, TypeError) as e:
+                print(f"Warning: Could not parse updated_at for idea {idea.get('id')}: {e}")
+                # If we can't parse the date, include it to be safe
+                fetched_ideas.append(idea)
+        else:
+            # If no updated_at field, include it to be safe
+            fetched_ideas.append(idea)
+
+    print(f"After client-side filtering: {len(fetched_ideas)} recently updated ideas")
 
     # Track which ideas were fetched (before filtering) for cleanup logic
     fetched_idea_ids: Set[int] = {idea['id'] for idea in fetched_ideas}

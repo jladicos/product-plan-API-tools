@@ -1682,6 +1682,110 @@ class TestSLAUpdate:
             assert row['Marketing'] == 0, "Marketing should be 0 (idea doesn't use this team)"
             assert row['Product'] == 0, "Product should be 0 (idea no longer uses this team)"
 
+    def test_sla_update_applies_client_side_date_filtering(self, temp_output_file, existing_spreadsheet_data, mock_team_mapping):
+        """
+        Test that sla_update applies client-side date filtering
+
+        The ProductPlan API does not support date-based filtering on the ideas endpoint.
+        This test verifies that we apply client-side filtering to only process ideas
+        updated within the 14-day lookback window.
+        """
+        # Create existing spreadsheet
+        storage = ExcelSLAStorage(temp_output_file)
+        storage.write(existing_spreadsheet_data)
+
+        # Mock current time for consistent testing
+        fixed_now = datetime(2025, 11, 4, 12, 0, 0)  # Nov 4, 2025 at noon
+
+        # Mock API to return ideas with various updated_at dates
+        # Some within 14-day window, some outside
+        idea_recent = {
+            'id': 1,
+            'name': 'Recently Updated Idea',
+            'description': 'Desc',
+            'customer': 'Customer A',
+            'source_name': 'John Doe',
+            'source_email': 'john@example.com',
+            'created_at': '2025-09-20T10:00:00Z',
+            'updated_at': '2025-10-25T14:00:00Z',  # WITHIN 14-day window
+            'location_status': 'visible',
+            'custom_dropdown_fields': [{'label': 'idea status', 'value': 'In Review'}],
+            'team_ids': []
+        }
+
+        idea_old = {
+            'id': 999,
+            'name': 'Old Idea',
+            'description': 'Desc',
+            'customer': 'Customer B',
+            'source_name': 'Jane Smith',
+            'source_email': 'jane@example.com',
+            'created_at': '2025-09-18T10:00:00Z',
+            'updated_at': '2025-10-01T10:00:00Z',  # OUTSIDE 14-day window (too old)
+            'location_status': 'visible',
+            'custom_dropdown_fields': [{'label': 'idea status', 'value': 'On deck'}],
+            'team_ids': []
+        }
+
+        idea_very_recent = {
+            'id': 888,
+            'name': 'Very Recent Idea',
+            'description': 'Desc',
+            'customer': 'Customer C',
+            'source_name': 'Bob Wilson',
+            'source_email': 'bob@example.com',
+            'created_at': '2025-09-22T10:00:00Z',
+            'updated_at': '2025-11-03T16:00:00Z',  # WITHIN 14-day window (yesterday)
+            'location_status': 'visible',
+            'custom_dropdown_fields': [{'label': 'idea status', 'value': 'Accepted'}],
+            'team_ids': []
+        }
+
+        # Mock API returns ALL ideas (API doesn't filter by date)
+        with patch('productplan_api_tools.sla.manager.IdeasResource') as MockIdeasResource, \
+             patch('productplan_api_tools.sla.manager.TeamsResource') as MockTeamsResource, \
+             patch('productplan_api_tools.sla.manager.config') as mock_config, \
+             patch('productplan_api_tools.sla.manager.datetime') as mock_datetime:
+
+            # Mock datetime.now() to return fixed time
+            mock_datetime.now.return_value = fixed_now
+            mock_datetime.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
+
+            mock_ideas_instance = MockIdeasResource.return_value
+            # API returns ALL ideas (no date filtering)
+            mock_ideas_instance.fetch_enhanced.return_value = [
+                idea_recent,
+                idea_old,
+                idea_very_recent
+            ]
+
+            mock_teams_instance = MockTeamsResource.return_value
+            mock_teams_instance.build_id_to_name_mapping.return_value = mock_team_mapping
+
+            mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
+
+            # Call sla_update()
+            sla_update(storage, "fake_token")
+
+            # Read final spreadsheet
+            df = storage.read()
+
+            # Verify only recent ideas were processed
+            # idea_recent (id=1) should be UPDATED (already exists)
+            # idea_very_recent (id=888) should be ADDED
+            # idea_old (id=999) should be FILTERED OUT (not processed)
+
+            assert len(df) == 3, f"Should have 3 ideas: 2 original + 1 new, got {len(df)}"
+
+            idea_ids = df['id'].tolist()
+            assert 1 in idea_ids, "Idea 1 (recent) should be updated"
+            assert 888 in idea_ids, "Idea 888 (very recent) should be added"
+            assert 999 not in idea_ids, "Idea 999 (old) should be filtered out by client-side date filter"
+
+            # Verify idea 888 has correct name (was added)
+            idea_888 = df[df['id'] == 888].iloc[0]
+            assert idea_888['name'] == 'Very Recent Idea', "New idea should have correct name"
+
 
 class TestSLARunTracking:
     """Integration tests for run tracking in sla_init and sla_update"""
@@ -1788,9 +1892,13 @@ class TestSLARunTracking:
             sla_init(storage, "fake_token")
 
         # Now update: add 2 new ideas, update 1 existing
+        # Mock fixed time for client-side date filtering
+        fixed_now = datetime(2025, 11, 4, 12, 0, 0)  # Nov 4, 2025
+        # Ideas must be updated within last 14 days to pass client-side filter
+
         updated_idea = initial_idea.copy()
         updated_idea['name'] = 'Updated Name'  # Changed
-        updated_idea['updated_at'] = '2025-10-10T10:00:00Z'  # Changed
+        updated_idea['updated_at'] = '2025-11-01T10:00:00Z'  # WITHIN 14-day window
 
         new_idea1 = {
             'id': 2,
@@ -1799,8 +1907,8 @@ class TestSLARunTracking:
             'customer': 'Customer',
             'source_name': 'Jane',
             'source_email': 'jane@example.com',
-            'created_at': '2025-10-08T10:00:00Z',
-            'updated_at': '2025-10-08T10:00:00Z',
+            'created_at': '2025-09-20T10:00:00Z',
+            'updated_at': '2025-11-02T10:00:00Z',  # WITHIN 14-day window
             'idea_status': 'On deck',
             'location_status': 'visible',
             'custom_dropdown_fields': [],
@@ -1818,8 +1926,8 @@ class TestSLARunTracking:
             'customer': 'Customer',
             'source_name': 'Bob',
             'source_email': 'bob@example.com',
-            'created_at': '2025-10-09T10:00:00Z',
-            'updated_at': '2025-10-09T10:00:00Z',
+            'created_at': '2025-09-21T10:00:00Z',
+            'updated_at': '2025-11-03T10:00:00Z',  # WITHIN 14-day window
             'idea_status': 'On deck',
             'location_status': 'visible',
             'custom_dropdown_fields': [],
@@ -1832,7 +1940,12 @@ class TestSLARunTracking:
 
         with patch('productplan_api_tools.sla.manager.IdeasResource') as MockIdeasResource, \
              patch('productplan_api_tools.sla.manager.TeamsResource') as MockTeamsResource, \
-             patch('productplan_api_tools.sla.manager.config') as mock_config:
+             patch('productplan_api_tools.sla.manager.config') as mock_config, \
+             patch('productplan_api_tools.sla.manager.datetime') as mock_datetime:
+
+            # Mock datetime.now() to return fixed time
+            mock_datetime.now.return_value = fixed_now
+            mock_datetime.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
 
             mock_ideas_instance = MockIdeasResource.return_value
             # Return all 3 ideas: 1 updated, 2 new

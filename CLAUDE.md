@@ -509,6 +509,9 @@ make okrs OBJECTIVE_STATUS=all OUTPUT=complete_okr_data.xlsx
 ### API Endpoints Used
 
 - `https://app.productplan.com/api/v2/discovery/ideas` - Ideas list
+  - **Known Limitation**: Does not support date-based filtering (e.g., `updated_at_gteq`)
+  - **Workaround**: SLA tracking uses client-side filtering after fetching all ideas
+  - **Future**: Will automatically benefit if ProductPlan adds date filtering support
 - `https://app.productplan.com/api/v2/discovery/ideas/{id}` - Individual idea details with timestamps and custom dropdown fields
 - `https://app.productplan.com/api/v2/teams` - Team data for ID-to-name mapping
 - `https://app.productplan.com/api/v2/discovery/idea_forms` - Idea form definitions

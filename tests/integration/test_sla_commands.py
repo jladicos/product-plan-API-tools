@@ -140,6 +140,8 @@ class TestSLAInit:
             # Verify SLA columns present
             assert 'response_sla' in df.columns
             assert 'roadmap_sla' in df.columns
+            assert 'response_sla_in_good_standing' in df.columns
+            assert 'roadmap_sla_in_good_standing' in df.columns
             assert 'currently_meets_response_sla' in df.columns
             assert 'currently_meets_roadmap_sla' in df.columns
 
@@ -168,29 +170,42 @@ class TestSLAInit:
 
             # Verify SLA calculations for each idea
 
-            # Idea 1: Status = "Accepted"
-            # Should have: response_sla set, roadmap_sla set, both booleans True
+            # Idea 1: Status = "Accepted" (created 2025-10-01, updated 2025-10-10)
+            # Should have: response_sla set, roadmap_sla set, both booleans True, both in good standing
             idea1 = df[df['id'] == 1].iloc[0]
             assert pd.notna(idea1['response_sla']), "Accepted idea should have response_sla set"
             assert pd.notna(idea1['roadmap_sla']), "Accepted idea should have roadmap_sla set"
             assert idea1['currently_meets_response_sla'] == True
             assert idea1['currently_meets_roadmap_sla'] == True
+            # New: validate in_good_standing columns
+            assert idea1['response_sla_in_good_standing'] == True, "Accepted idea met response SLA, should be in good standing"
+            assert idea1['roadmap_sla_in_good_standing'] == True, "Accepted idea met roadmap SLA, should be in good standing"
 
-            # Idea 2: Status = "In Review"
+            # Idea 2: Status = "In Review" (created 2025-10-15, updated 2025-10-20)
             # Should have: response_sla set, roadmap_sla NOT set, response boolean True, roadmap False
             idea2 = df[df['id'] == 2].iloc[0]
             assert pd.notna(idea2['response_sla']), "In Review idea should have response_sla set"
             assert pd.isna(idea2['roadmap_sla']), "In Review idea should NOT have roadmap_sla set"
             assert idea2['currently_meets_response_sla'] == True
             assert idea2['currently_meets_roadmap_sla'] == False
+            # New: validate in_good_standing columns
+            assert idea2['response_sla_in_good_standing'] == True, "In Review idea met response SLA, should be in good standing"
+            # Roadmap: Not decided yet, but still within 60 days (created 2025-10-15), so in good standing
+            assert idea2['roadmap_sla_in_good_standing'] == True, "In Review idea not decided but within 60 days, should be in good standing"
 
-            # Idea 3: Status = "On deck"
+            # Idea 3: Status = "On deck" (created 2025-11-01, updated 2025-11-05)
             # Should have: no SLA dates, both booleans False
             idea3 = df[df['id'] == 3].iloc[0]
             assert pd.isna(idea3['response_sla']), "On deck idea should NOT have response_sla set"
             assert pd.isna(idea3['roadmap_sla']), "On deck idea should NOT have roadmap_sla set"
             assert idea3['currently_meets_response_sla'] == False
             assert idea3['currently_meets_roadmap_sla'] == False
+            # New: validate in_good_standing columns
+            # Created 2025-11-01, which is recent (likely < 14 days from test execution)
+            # So response should be in good standing (still has time)
+            assert idea3['response_sla_in_good_standing'] == True, "On deck idea within 14 days should be in good standing for response"
+            # Also within 60 days for roadmap
+            assert idea3['roadmap_sla_in_good_standing'] == True, "On deck idea within 60 days should be in good standing for roadmap"
 
     def test_sla_init_extracts_idea_status_correctly(self, temp_output_file, mock_ideas_data, mock_team_mapping):
         """Test that idea_status is extracted from custom dropdown fields"""
@@ -463,6 +478,7 @@ class TestSLAInit:
                 'id', 'url', 'name', 'description', 'customer', 'source_name', 'source_email',
                 'created_at', 'updated_at', 'idea_status', 'location_status',
                 'response_sla', 'roadmap_sla',
+                'response_sla_in_good_standing', 'roadmap_sla_in_good_standing',
                 'currently_meets_response_sla', 'currently_meets_roadmap_sla',
                 'Custom: Priority', 'Custom: Category'
             ]
@@ -607,6 +623,7 @@ class TestSLAInit:
                 'id', 'url', 'name', 'description', 'customer', 'source_name', 'source_email',
                 'created_at', 'updated_at', 'idea_status', 'location_status',
                 'response_sla', 'roadmap_sla',
+                'response_sla_in_good_standing', 'roadmap_sla_in_good_standing',
                 'currently_meets_response_sla', 'currently_meets_roadmap_sla',
                 'Custom_Dropdown: idea status'  # Only dropdown field
             ]
@@ -833,6 +850,125 @@ class TestSLAInit:
             # Verify sorted: Default Team(0) < Engineering(1) < Design(5)
             assert default_idx < eng_idx < design_idx, \
                 "Team with ID=0 should be first in team columns"
+
+    def test_sla_init_in_good_standing_edge_cases(self, temp_output_file, mock_team_mapping):
+        """Test in_good_standing columns with edge cases: old on-deck, late response, boundary conditions"""
+        from datetime import datetime, timedelta
+
+        # Create test data with specific edge cases
+        now = datetime.utcnow()
+        edge_case_ideas = [
+            # Case 1: Old idea on deck (missed deadline)
+            {
+                'id': 100,
+                'name': 'Old On Deck',
+                'description': 'Created 20 days ago, still on deck',
+                'customer': 'Test',
+                'source_name': 'Test',
+                'source_email': 'test@example.com',
+                'created_at': (now - timedelta(days=20)).isoformat() + 'Z',
+                'updated_at': (now - timedelta(days=20)).isoformat() + 'Z',
+                'location_status': 'visible',
+                'custom_dropdown_fields': [
+                    {'label': 'idea status', 'value': 'On deck'}
+                ],
+                'team_ids': [1]
+            },
+            # Case 2: Responded late (after 14 days, before 60 days)
+            {
+                'id': 101,
+                'name': 'Late Response',
+                'description': 'Responded on day 30',
+                'customer': 'Test',
+                'source_name': 'Test',
+                'source_email': 'test@example.com',
+                'created_at': (now - timedelta(days=40)).isoformat() + 'Z',
+                'updated_at': (now - timedelta(days=10)).isoformat() + 'Z',  # Responded 30 days after creation
+                'location_status': 'visible',
+                'custom_dropdown_fields': [
+                    {'label': 'idea status', 'value': 'In Review'}
+                ],
+                'team_ids': [1]
+            },
+            # Case 3: Exactly 14 days old, on deck (boundary - should be in good standing)
+            {
+                'id': 102,
+                'name': 'Boundary 14 Days',
+                'description': 'Created exactly 14 days ago',
+                'customer': 'Test',
+                'source_name': 'Test',
+                'source_email': 'test@example.com',
+                'created_at': (now - timedelta(days=14)).isoformat() + 'Z',
+                'updated_at': (now - timedelta(days=14)).isoformat() + 'Z',
+                'location_status': 'visible',
+                'custom_dropdown_fields': [
+                    {'label': 'idea status', 'value': 'On deck'}
+                ],
+                'team_ids': [1]
+            },
+            # Case 4: Responded late but within roadmap window
+            # Note: Can't test >60 days due to date filtering (removes ideas before 2025-09-15)
+            # Testing: missed response SLA (>14 days) but still within roadmap SLA (<60 days)
+            {
+                'id': 103,
+                'name': 'Responded Late',
+                'description': 'Created 45 days ago, responded after 20 days',
+                'customer': 'Test',
+                'source_name': 'Test',
+                'source_email': 'test@example.com',
+                'created_at': (now - timedelta(days=45)).isoformat() + 'Z',
+                'updated_at': (now - timedelta(days=25)).isoformat() + 'Z',  # Responded after 20 days
+                'location_status': 'visible',
+                'custom_dropdown_fields': [
+                    {'label': 'idea status', 'value': 'In Review'}
+                ],
+                'team_ids': [1]
+            }
+        ]
+
+        with patch('productplan_api_tools.sla.manager.IdeasResource') as MockIdeasResource, \
+             patch('productplan_api_tools.sla.manager.TeamsResource') as MockTeamsResource, \
+             patch('productplan_api_tools.sla.manager.config') as mock_config:
+
+            # Setup mocks
+            mock_ideas_instance = MockIdeasResource.return_value
+            mock_ideas_instance.fetch_enhanced.return_value = edge_case_ideas
+
+            mock_teams_instance = MockTeamsResource.return_value
+            mock_teams_instance.build_id_to_name_mapping.return_value = mock_team_mapping
+
+            mock_config.get_url_prefix.return_value = 'https://app.productplan.com/ideas'
+
+            # Call sla_init()
+            sla_init(ExcelSLAStorage(temp_output_file), "fake_token")
+
+            # Read the file back
+            storage = ExcelSLAStorage(temp_output_file)
+            df = storage.read()
+
+            # Case 1: Old on deck (20 days) - missed response deadline
+            idea100 = df[df['id'] == 100].iloc[0]
+            assert idea100['currently_meets_response_sla'] == False, "Didn't respond"
+            assert idea100['response_sla_in_good_standing'] == False, "Missed 14-day deadline for response"
+            assert idea100['roadmap_sla_in_good_standing'] == True, "Still within 60-day window for roadmap"
+
+            # Case 2: Late response (30 days after creation) - met response SLA? No. In good standing? No.
+            idea101 = df[df['id'] == 101].iloc[0]
+            assert idea101['currently_meets_response_sla'] == False, "Responded after 14 days"
+            assert idea101['response_sla_in_good_standing'] == False, "Responded late, not in good standing"
+            assert idea101['roadmap_sla_in_good_standing'] == True, "Still within 60 days, in good standing"
+
+            # Case 3: Exactly 14 days old, on deck - should be in good standing (boundary)
+            idea102 = df[df['id'] == 102].iloc[0]
+            assert idea102['currently_meets_response_sla'] == False, "Hasn't responded yet"
+            assert idea102['response_sla_in_good_standing'] == True, "Exactly 14 days - still in good standing (can respond now and meet SLA)"
+            assert idea102['roadmap_sla_in_good_standing'] == True, "Within 60 days"
+
+            # Case 4: Responded late (45 days old, responded after 20 days), still not decided
+            idea103 = df[df['id'] == 103].iloc[0]
+            assert idea103['currently_meets_response_sla'] == False, "Responded after 14 days (late)"
+            assert idea103['response_sla_in_good_standing'] == False, "Missed response deadline"
+            assert idea103['roadmap_sla_in_good_standing'] == True, "Within 60 days, still in good standing for roadmap"
 
 
 class TestSLAUpdate:
@@ -1570,6 +1706,7 @@ class TestSLAUpdate:
                 'id', 'url', 'name', 'description', 'customer', 'source_name', 'source_email',
                 'created_at', 'updated_at', 'idea_status', 'location_status',
                 'response_sla', 'roadmap_sla',
+                'response_sla_in_good_standing', 'roadmap_sla_in_good_standing',
                 'currently_meets_response_sla', 'currently_meets_roadmap_sla',
                 'Custom: Priority', 'Custom: Category', 'Custom: Complexity'
             ]

@@ -9,7 +9,9 @@ from datetime import datetime, timedelta
 from productplan_api_tools.sla.calculator import (
     extract_idea_status,
     calculate_sla_columns,
-    compare_timestamps
+    compare_timestamps,
+    calculate_response_sla_in_good_standing,
+    calculate_roadmap_sla_in_good_standing
 )
 
 
@@ -659,3 +661,409 @@ class TestCompareTimestamps:
         api_ts = pd.Timestamp('2024-01-15 10:00:00')
         sheet_ts = pd.Timestamp('2024-01-15 09:00:00')
         assert compare_timestamps(api_ts, sheet_ts) is True
+
+
+class TestCalculateResponseSlaInGoodStanding:
+    """Tests for calculate_response_sla_in_good_standing() function"""
+
+    def test_already_met_sla(self):
+        """Test idea that already met response SLA"""
+        created_at = datetime(2024, 1, 1, 0, 0, 0)
+        result = calculate_response_sla_in_good_standing(
+            idea_status='In Review',
+            created_at=created_at,
+            currently_meets_response_sla=True
+        )
+        assert result is True
+
+    def test_within_window_on_deck(self):
+        """Test idea within 14-day window, still on deck"""
+        created_at = datetime.utcnow() - timedelta(days=10)
+        result = calculate_response_sla_in_good_standing(
+            idea_status='On deck',
+            created_at=created_at,
+            currently_meets_response_sla=False
+        )
+        assert result is True
+
+    def test_within_window_empty_status(self):
+        """Test idea within 14-day window, empty status (treated as on deck)"""
+        created_at = datetime.utcnow() - timedelta(days=5)
+        result = calculate_response_sla_in_good_standing(
+            idea_status='',
+            created_at=created_at,
+            currently_meets_response_sla=False
+        )
+        assert result is True
+
+    def test_within_window_null_status(self):
+        """Test idea within 14-day window, null status (treated as on deck)"""
+        created_at = datetime.utcnow() - timedelta(days=5)
+        result = calculate_response_sla_in_good_standing(
+            idea_status=None,
+            created_at=created_at,
+            currently_meets_response_sla=False
+        )
+        assert result is True
+
+    def test_within_window_but_responded(self):
+        """Test idea within window but already responded (not on deck anymore)"""
+        created_at = datetime.utcnow() - timedelta(days=5)
+        result = calculate_response_sla_in_good_standing(
+            idea_status='In Review',
+            created_at=created_at,
+            currently_meets_response_sla=False
+        )
+        # Not in good standing because status changed but didn't meet SLA
+        assert result is False
+
+    def test_past_window_on_deck(self):
+        """Test idea past 14-day window, still on deck (missed deadline)"""
+        created_at = datetime.utcnow() - timedelta(days=20)
+        result = calculate_response_sla_in_good_standing(
+            idea_status='On deck',
+            created_at=created_at,
+            currently_meets_response_sla=False
+        )
+        assert result is False
+
+    def test_past_window_empty_status(self):
+        """Test idea past 14-day window, empty status (missed deadline)"""
+        created_at = datetime.utcnow() - timedelta(days=20)
+        result = calculate_response_sla_in_good_standing(
+            idea_status='',
+            created_at=created_at,
+            currently_meets_response_sla=False
+        )
+        assert result is False
+
+    def test_missing_created_at(self):
+        """Test graceful handling when created_at is None"""
+        result = calculate_response_sla_in_good_standing(
+            idea_status='On deck',
+            created_at=None,
+            currently_meets_response_sla=False
+        )
+        assert result is False
+
+    def test_exactly_14_days_on_deck(self):
+        """Test boundary: exactly 14 days old, still on deck (still in good standing)"""
+        created_at = datetime.utcnow() - timedelta(days=14)
+        result = calculate_response_sla_in_good_standing(
+            idea_status='On deck',
+            created_at=created_at,
+            currently_meets_response_sla=False
+        )
+        # days_since_creation = 14, which IS <= 14, so still in good standing
+        # (responding right now would meet the SLA)
+        assert result is True
+
+    def test_just_under_14_days_on_deck(self):
+        """Test boundary: 13 days old, still on deck (still has time)"""
+        created_at = datetime.utcnow() - timedelta(days=13, hours=23)
+        result = calculate_response_sla_in_good_standing(
+            idea_status='On deck',
+            created_at=created_at,
+            currently_meets_response_sla=False
+        )
+        # days_since_creation = 13, which is <= 14, so still good
+        assert result is True
+
+    def test_just_over_14_days_on_deck(self):
+        """Test boundary: 15 days old, still on deck (missed deadline)"""
+        created_at = datetime.utcnow() - timedelta(days=15)
+        result = calculate_response_sla_in_good_standing(
+            idea_status='On deck',
+            created_at=created_at,
+            currently_meets_response_sla=False
+        )
+        # days_since_creation = 15, which is > 14, so deadline missed
+        assert result is False
+
+    def test_negative_days_future_created_at(self):
+        """Test edge case: created_at is in the future (clock skew)"""
+        created_at = datetime.utcnow() + timedelta(days=1)  # 1 day in future
+        result = calculate_response_sla_in_good_standing(
+            idea_status='On deck',
+            created_at=created_at,
+            currently_meets_response_sla=False
+        )
+        # days_since_creation = -1, which is <= 14, so returns True
+        # This is reasonable - can't have missed a deadline that hasn't started
+        assert result is True
+
+    def test_already_met_overrides_status_check(self):
+        """Test that currently_meets_response_sla=True always returns True"""
+        # Even if status is weird, if they met the SLA, they're in good standing
+        created_at = datetime.utcnow() - timedelta(days=100)
+        result = calculate_response_sla_in_good_standing(
+            idea_status='On deck',  # Weird: on deck but supposedly met SLA
+            created_at=created_at,
+            currently_meets_response_sla=True  # This should dominate
+        )
+        # Should return True because currently_meets_response_sla is True
+        assert result is True
+
+    def test_very_old_idea_on_deck(self):
+        """Test edge case: very old idea (1000+ days) still on deck"""
+        created_at = datetime.utcnow() - timedelta(days=1000)
+        result = calculate_response_sla_in_good_standing(
+            idea_status='On deck',
+            created_at=created_at,
+            currently_meets_response_sla=False
+        )
+        # Way past deadline
+        assert result is False
+
+
+class TestCalculateRoadmapSlaInGoodStanding:
+    """Tests for calculate_roadmap_sla_in_good_standing() function"""
+
+    def test_already_met_sla(self):
+        """Test idea that already met roadmap SLA"""
+        created_at = datetime(2024, 1, 1, 0, 0, 0)
+        result = calculate_roadmap_sla_in_good_standing(
+            idea_status='Accepted',
+            created_at=created_at,
+            currently_meets_roadmap_sla=True
+        )
+        assert result is True
+
+    def test_within_window_not_decided(self):
+        """Test idea within 60-day window, not yet decided"""
+        created_at = datetime.utcnow() - timedelta(days=30)
+        result = calculate_roadmap_sla_in_good_standing(
+            idea_status='In Review',
+            created_at=created_at,
+            currently_meets_roadmap_sla=False
+        )
+        assert result is True
+
+    def test_within_window_on_deck(self):
+        """Test idea within 60-day window, on deck (not decided)"""
+        created_at = datetime.utcnow() - timedelta(days=20)
+        result = calculate_roadmap_sla_in_good_standing(
+            idea_status='On deck',
+            created_at=created_at,
+            currently_meets_roadmap_sla=False
+        )
+        assert result is True
+
+    def test_within_window_empty_status(self):
+        """Test idea within 60-day window, empty status (not decided)"""
+        created_at = datetime.utcnow() - timedelta(days=20)
+        result = calculate_roadmap_sla_in_good_standing(
+            idea_status='',
+            created_at=created_at,
+            currently_meets_roadmap_sla=False
+        )
+        assert result is True
+
+    def test_within_window_null_status(self):
+        """Test idea within 60-day window, null status (not decided)"""
+        created_at = datetime.utcnow() - timedelta(days=20)
+        result = calculate_roadmap_sla_in_good_standing(
+            idea_status=None,
+            created_at=created_at,
+            currently_meets_roadmap_sla=False
+        )
+        assert result is True
+
+    def test_past_window_not_decided(self):
+        """Test idea past 60-day window, not decided (missed deadline)"""
+        created_at = datetime.utcnow() - timedelta(days=70)
+        result = calculate_roadmap_sla_in_good_standing(
+            idea_status='In Review',
+            created_at=created_at,
+            currently_meets_roadmap_sla=False
+        )
+        assert result is False
+
+    def test_past_window_on_deck(self):
+        """Test idea past 60-day window, still on deck (missed deadline)"""
+        created_at = datetime.utcnow() - timedelta(days=70)
+        result = calculate_roadmap_sla_in_good_standing(
+            idea_status='On deck',
+            created_at=created_at,
+            currently_meets_roadmap_sla=False
+        )
+        assert result is False
+
+    def test_decided_but_didnt_meet_sla(self):
+        """Test idea that was decided but didn't meet the 60-day SLA"""
+        created_at = datetime.utcnow() - timedelta(days=70)
+        result = calculate_roadmap_sla_in_good_standing(
+            idea_status='Accepted',
+            created_at=created_at,
+            currently_meets_roadmap_sla=False
+        )
+        # Status is "Accepted" but SLA was not met (late decision)
+        assert result is False
+
+    def test_missing_created_at(self):
+        """Test graceful handling when created_at is None"""
+        result = calculate_roadmap_sla_in_good_standing(
+            idea_status='In Review',
+            created_at=None,
+            currently_meets_roadmap_sla=False
+        )
+        assert result is False
+
+    def test_exactly_60_days_not_decided(self):
+        """Test boundary: exactly 60 days old, not decided (still in good standing)"""
+        created_at = datetime.utcnow() - timedelta(days=60)
+        result = calculate_roadmap_sla_in_good_standing(
+            idea_status='In Review',
+            created_at=created_at,
+            currently_meets_roadmap_sla=False
+        )
+        # days_since_creation = 60, which IS <= 60, so still in good standing
+        # (deciding right now would meet the SLA)
+        assert result is True
+
+    def test_just_under_60_days_not_decided(self):
+        """Test boundary: 59 days old, not decided (still has time)"""
+        created_at = datetime.utcnow() - timedelta(days=59, hours=23)
+        result = calculate_roadmap_sla_in_good_standing(
+            idea_status='In Review',
+            created_at=created_at,
+            currently_meets_roadmap_sla=False
+        )
+        # days_since_creation = 59, which is <= 60, so still good
+        assert result is True
+
+    def test_just_over_60_days_not_decided(self):
+        """Test boundary: 61 days old, not decided (missed deadline)"""
+        created_at = datetime.utcnow() - timedelta(days=61)
+        result = calculate_roadmap_sla_in_good_standing(
+            idea_status='In Review',
+            created_at=created_at,
+            currently_meets_roadmap_sla=False
+        )
+        # days_since_creation = 61, which is > 60, so deadline missed
+        assert result is False
+
+    def test_rejected_status_also_counts_as_decided(self):
+        """Test that 'Rejected' status counts as decided"""
+        created_at = datetime.utcnow() - timedelta(days=70)
+        result = calculate_roadmap_sla_in_good_standing(
+            idea_status='Rejected',
+            created_at=created_at,
+            currently_meets_roadmap_sla=False
+        )
+        # Status is "Rejected" but SLA was not met (late decision)
+        assert result is False
+
+    def test_negative_days_future_created_at_roadmap(self):
+        """Test edge case: created_at is in the future (clock skew) for roadmap"""
+        created_at = datetime.utcnow() + timedelta(days=1)  # 1 day in future
+        result = calculate_roadmap_sla_in_good_standing(
+            idea_status='In Review',
+            created_at=created_at,
+            currently_meets_roadmap_sla=False
+        )
+        # days_since_creation = -1, which is <= 60, so returns True
+        # This is reasonable - can't have missed a deadline that hasn't started
+        assert result is True
+
+    def test_already_met_roadmap_overrides_status_check(self):
+        """Test that currently_meets_roadmap_sla=True always returns True"""
+        # Even if it's been a long time, if they met the SLA, they're in good standing
+        created_at = datetime.utcnow() - timedelta(days=200)
+        result = calculate_roadmap_sla_in_good_standing(
+            idea_status='In Review',  # Not decided but somehow met SLA
+            created_at=created_at,
+            currently_meets_roadmap_sla=True  # This should dominate
+        )
+        # Should return True because currently_meets_roadmap_sla is True
+        assert result is True
+
+    def test_very_old_idea_not_decided(self):
+        """Test edge case: very old idea (1000+ days) not decided"""
+        created_at = datetime.utcnow() - timedelta(days=1000)
+        result = calculate_roadmap_sla_in_good_standing(
+            idea_status='In Review',
+            created_at=created_at,
+            currently_meets_roadmap_sla=False
+        )
+        # Way past deadline
+        assert result is False
+
+
+class TestCalculateSLAColumnsWithInGoodStanding:
+    """Tests to verify calculate_sla_columns returns in_good_standing columns"""
+
+    def test_new_columns_present_in_return(self):
+        """Test that new in_good_standing columns are present in return dict"""
+        idea = {
+            'custom_dropdown_fields': [
+                {'label': 'idea status', 'value': 'On deck'}
+            ],
+            'created_at': '2024-01-01T00:00:00Z',
+            'updated_at': '2024-01-01T00:00:00Z'
+        }
+        result = calculate_sla_columns(idea)
+
+        # Verify new keys exist
+        assert 'response_sla_in_good_standing' in result
+        assert 'roadmap_sla_in_good_standing' in result
+
+    def test_on_deck_within_window(self):
+        """Test on deck idea within 14-day window is in good standing"""
+        created_at = datetime.utcnow() - timedelta(days=10)
+        idea = {
+            'custom_dropdown_fields': [
+                {'label': 'idea status', 'value': 'On deck'}
+            ],
+            'created_at': created_at.isoformat() + 'Z',
+            'updated_at': created_at.isoformat() + 'Z'
+        }
+        result = calculate_sla_columns(idea)
+
+        # Should be in good standing for both (within windows, not decided/responded)
+        assert result['response_sla_in_good_standing'] is True
+        assert result['roadmap_sla_in_good_standing'] is True
+        # But not meeting the "met" criteria yet
+        assert result['currently_meets_response_sla'] is False
+        assert result['currently_meets_roadmap_sla'] is False
+
+    def test_responded_on_time(self):
+        """Test idea that responded on time"""
+        # Use recent dates relative to now to avoid false failures
+        created_at = datetime.utcnow() - timedelta(days=9)
+        updated_at = datetime.utcnow()  # Just responded
+        idea = {
+            'custom_dropdown_fields': [
+                {'label': 'idea status', 'value': 'In Review'}
+            ],
+            'created_at': created_at.isoformat() + 'Z',
+            'updated_at': updated_at.isoformat() + 'Z'
+        }
+        result = calculate_sla_columns(idea)
+
+        # Should be in good standing AND meet the SLA
+        assert result['response_sla_in_good_standing'] is True
+        assert result['currently_meets_response_sla'] is True
+        # Not decided yet, but within 60-day window
+        assert result['roadmap_sla_in_good_standing'] is True
+        assert result['currently_meets_roadmap_sla'] is False
+
+    def test_responded_late(self):
+        """Test idea that responded late (missed 14-day deadline)"""
+        created_at = datetime.utcnow() - timedelta(days=40)
+        updated_at = datetime.utcnow() - timedelta(days=5)
+        idea = {
+            'custom_dropdown_fields': [
+                {'label': 'idea status', 'value': 'In Review'}
+            ],
+            'created_at': created_at.isoformat() + 'Z',
+            'updated_at': updated_at.isoformat() + 'Z'
+        }
+        result = calculate_sla_columns(idea)
+
+        # NOT in good standing (missed deadline)
+        assert result['response_sla_in_good_standing'] is False
+        assert result['currently_meets_response_sla'] is False
+        # Still within 60-day window for roadmap
+        assert result['roadmap_sla_in_good_standing'] is True
+        assert result['currently_meets_roadmap_sla'] is False

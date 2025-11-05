@@ -280,6 +280,8 @@ The SLA tracking spreadsheet includes columns in this specific order:
 **SLA Tracking:**
 - `response_sla`: Date when status first changed from "On deck" (historical, never cleared)
 - `roadmap_sla`: Date when status became "Accepted" or "Rejected" (historical, never cleared)
+- `response_sla_in_good_standing`: Boolean - is idea in good standing for response? (met SLA OR still within 14-day window)
+- `roadmap_sla_in_good_standing`: Boolean - is idea in good standing for roadmap? (met SLA OR still within 60-day window)
 - `currently_meets_response_sla`: Boolean - does idea currently meet 14-day response SLA?
 - `currently_meets_roadmap_sla`: Boolean - does idea currently meet 60-day roadmap SLA?
 
@@ -295,6 +297,52 @@ The SLA tracking spreadsheet includes columns in this specific order:
 - **Important**: Team columns are always positioned LAST (after all other columns including custom fields)
 - Sorted by team ID numerically (e.g., "Team_1", "Team_2", "Team_100")
 - This ensures new teams or custom fields don't shift existing column positions
+
+#### Understanding "In Good Standing" Columns
+
+The `response_sla_in_good_standing` and `roadmap_sla_in_good_standing` columns help distinguish between ideas that have **missed their deadline** versus ideas that are **still within the allowed window**.
+
+**Response SLA In Good Standing** (TRUE when):
+- Idea responded within 14 days (status changed from "On deck" on time), OR
+- Idea is still within the 14-day window and hasn't been responded to yet
+
+**Roadmap SLA In Good Standing** (FALSE when):
+- Idea missed the 14-day response deadline
+
+**Roadmap SLA In Good Standing** (TRUE when):
+- Idea reached decision within 60 days (status became "Accepted" or "Rejected" on time), OR
+- Idea is still within the 60-day window and hasn't reached a decision yet
+
+**Roadmap SLA In Good Standing** (FALSE when):
+- Idea missed the 60-day roadmap deadline
+
+#### Calculating SLA Compliance Percentages
+
+Use the "in good standing" columns to calculate accurate compliance percentages:
+
+**Response SLA Compliance %:**
+```
+= COUNT(response_sla_in_good_standing = TRUE) / TOTAL_IDEAS
+```
+
+**Roadmap SLA Compliance %:**
+```
+= COUNT(roadmap_sla_in_good_standing = TRUE) / TOTAL_IDEAS
+```
+
+**Example Google Sheets formulas:**
+```
+# Response SLA compliance (assuming data in rows 2-100)
+=COUNTIF(M2:M100, TRUE) / COUNTA(A2:A100)
+
+# Roadmap SLA compliance
+=COUNTIF(N2:N100, TRUE) / COUNTA(A2:A100)
+
+# Team-specific compliance (assuming "Engineering" in column W)
+=COUNTIFS(M2:M100, TRUE, W2:W100, 1) / COUNTIF(W2:W100, 1)
+```
+
+Replace column letters (M, N, W) with your actual column positions. Adjust row ranges (2:100) to match your data.
 
 #### Run Tracking and Audit Trail
 

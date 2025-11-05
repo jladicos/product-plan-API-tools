@@ -52,6 +52,112 @@ def extract_idea_status(idea: Dict[str, Any]) -> str:
     return ''
 
 
+def calculate_response_sla_in_good_standing(
+    idea_status: str,
+    created_at: Optional[datetime],
+    currently_meets_response_sla: bool
+) -> bool:
+    """
+    Calculate if idea is in good standing for response SLA
+
+    An idea is in good standing if:
+    - It already met the response SLA (currently_meets_response_sla = True), OR
+    - It's still within the 14-day window and hasn't been responded to yet
+
+    Args:
+        idea_status: Current status of the idea (may be empty/None)
+        created_at: When the idea was created
+        currently_meets_response_sla: Whether the idea already met response SLA
+
+    Returns:
+        True if idea is in good standing, False if deadline missed
+    """
+    # If already met the SLA, we're good
+    if currently_meets_response_sla:
+        return True
+
+    # Can't calculate without created_at
+    if created_at is None:
+        return False
+
+    # Check if still within the 14-day window
+    now = datetime.utcnow()
+    # Make both timezone-aware or both timezone-naive for comparison
+    if created_at.tzinfo is not None:
+        # created_at is tz-aware, make now tz-aware too
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=created_at.tzinfo)
+    else:
+        # created_at is tz-naive, make now tz-naive too
+        if now.tzinfo is not None:
+            now = now.replace(tzinfo=None)
+
+    days_since_creation = (now - created_at).days
+
+    # If within window AND status is "On deck" or empty (not yet responded), we're good
+    # Use <= to be consistent with currently_meets_response_sla (responding on day 14 counts)
+    if days_since_creation <= 14:
+        # Treat empty/None status the same as "On deck"
+        if not idea_status or idea_status == "On deck":
+            return True
+
+    # Otherwise, deadline has been missed
+    return False
+
+
+def calculate_roadmap_sla_in_good_standing(
+    idea_status: str,
+    created_at: Optional[datetime],
+    currently_meets_roadmap_sla: bool
+) -> bool:
+    """
+    Calculate if idea is in good standing for roadmap SLA
+
+    An idea is in good standing if:
+    - It already met the roadmap SLA (currently_meets_roadmap_sla = True), OR
+    - It's still within the 60-day window and hasn't reached a decision yet
+
+    Args:
+        idea_status: Current status of the idea (may be empty/None)
+        created_at: When the idea was created
+        currently_meets_roadmap_sla: Whether the idea already met roadmap SLA
+
+    Returns:
+        True if idea is in good standing, False if deadline missed
+    """
+    # If already met the SLA, we're good
+    if currently_meets_roadmap_sla:
+        return True
+
+    # Can't calculate without created_at
+    if created_at is None:
+        return False
+
+    # Check if still within the 60-day window
+    now = datetime.utcnow()
+    # Make both timezone-aware or both timezone-naive for comparison
+    if created_at.tzinfo is not None:
+        # created_at is tz-aware, make now tz-aware too
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=created_at.tzinfo)
+    else:
+        # created_at is tz-naive, make now tz-naive too
+        if now.tzinfo is not None:
+            now = now.replace(tzinfo=None)
+
+    days_since_creation = (now - created_at).days
+
+    # If within window AND status is not yet decided, we're good
+    # Use <= to be consistent with currently_meets_roadmap_sla (deciding on day 60 counts)
+    if days_since_creation <= 60:
+        # Not decided if status is not "Accepted" or "Rejected"
+        if idea_status not in ["Accepted", "Rejected"]:
+            return True
+
+    # Otherwise, deadline has been missed
+    return False
+
+
 def calculate_sla_columns(
     idea: Dict[str, Any],
     existing_sla_data: Optional[Dict[str, Any]] = None
@@ -66,6 +172,8 @@ def calculate_sla_columns(
                    Uses updated_at timestamp for historical accuracy (falls back to current time)
     - currently_meets_response_sla: True if status changed within 14 days AND status is currently valid
     - currently_meets_roadmap_sla: True if status reached Accepted/Rejected within 60 days AND status is currently valid
+    - response_sla_in_good_standing: True if met response SLA OR still within 14-day window
+    - roadmap_sla_in_good_standing: True if met roadmap SLA OR still within 60-day window
 
     Args:
         idea: Idea dictionary with custom_dropdown_fields, created_at, updated_at, etc.
@@ -73,12 +181,14 @@ def calculate_sla_columns(
                           Used to preserve historical dates during updates
 
     Returns:
-        Dictionary with four SLA columns:
+        Dictionary with six SLA columns:
         {
             'response_sla': datetime or None,
             'roadmap_sla': datetime or None,
             'currently_meets_response_sla': bool,
-            'currently_meets_roadmap_sla': bool
+            'currently_meets_roadmap_sla': bool,
+            'response_sla_in_good_standing': bool,
+            'roadmap_sla_in_good_standing': bool
         }
 
     Note:
@@ -196,11 +306,26 @@ def calculate_sla_columns(
         days_to_decide = (roadmap_sla_aware - created_at).days
         currently_meets_roadmap_sla = days_to_decide <= 60
 
+    # Calculate "in good standing" columns
+    response_sla_in_good_standing = calculate_response_sla_in_good_standing(
+        idea_status=idea_status,
+        created_at=created_at,
+        currently_meets_response_sla=currently_meets_response_sla
+    )
+
+    roadmap_sla_in_good_standing = calculate_roadmap_sla_in_good_standing(
+        idea_status=idea_status,
+        created_at=created_at,
+        currently_meets_roadmap_sla=currently_meets_roadmap_sla
+    )
+
     return {
         'response_sla': response_sla,
         'roadmap_sla': roadmap_sla,
         'currently_meets_response_sla': currently_meets_response_sla,
-        'currently_meets_roadmap_sla': currently_meets_roadmap_sla
+        'currently_meets_roadmap_sla': currently_meets_roadmap_sla,
+        'response_sla_in_good_standing': response_sla_in_good_standing,
+        'roadmap_sla_in_good_standing': roadmap_sla_in_good_standing
     }
 
 

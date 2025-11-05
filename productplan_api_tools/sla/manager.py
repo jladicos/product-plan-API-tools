@@ -142,6 +142,7 @@ def sla_init(storage: SLAStorage, token: str) -> None:
     Column ordering in output:
         id, url, name, description, customer, source_name, source_email, idea_status,
         created_at, updated_at, response_sla, roadmap_sla,
+        response_sla_in_good_standing, roadmap_sla_in_good_standing,
         currently_meets_response_sla, currently_meets_roadmap_sla,
         location_status, [custom fields], [team columns sorted by ID]
     """
@@ -189,6 +190,8 @@ def sla_init(storage: SLAStorage, token: str) -> None:
         # Add SLA columns to idea
         idea['response_sla'] = sla_columns['response_sla']
         idea['roadmap_sla'] = sla_columns['roadmap_sla']
+        idea['response_sla_in_good_standing'] = sla_columns['response_sla_in_good_standing']
+        idea['roadmap_sla_in_good_standing'] = sla_columns['roadmap_sla_in_good_standing']
         idea['currently_meets_response_sla'] = sla_columns['currently_meets_response_sla']
         idea['currently_meets_roadmap_sla'] = sla_columns['currently_meets_roadmap_sla']
 
@@ -208,6 +211,7 @@ def sla_init(storage: SLAStorage, token: str) -> None:
         df = pd.DataFrame(columns=[
             'id', 'url', 'name', 'description', 'customer', 'source_name', 'source_email',
             'idea_status', 'created_at', 'updated_at', 'response_sla', 'roadmap_sla',
+            'response_sla_in_good_standing', 'roadmap_sla_in_good_standing',
             'currently_meets_response_sla', 'currently_meets_roadmap_sla', 'location_status'
         ])
         # Write empty spreadsheet
@@ -255,6 +259,7 @@ def sla_init(storage: SLAStorage, token: str) -> None:
     # SLA columns (immediately after updated_at)
     sla_columns_list = [
         'response_sla', 'roadmap_sla',
+        'response_sla_in_good_standing', 'roadmap_sla_in_good_standing',
         'currently_meets_response_sla', 'currently_meets_roadmap_sla'
     ]
 
@@ -480,6 +485,8 @@ def sla_update(storage: SLAStorage, token: str) -> None:
                 # Update idea with new SLA columns
                 idea_dict['response_sla'] = sla_columns['response_sla']
                 idea_dict['roadmap_sla'] = sla_columns['roadmap_sla']
+                idea_dict['response_sla_in_good_standing'] = sla_columns['response_sla_in_good_standing']
+                idea_dict['roadmap_sla_in_good_standing'] = sla_columns['roadmap_sla_in_good_standing']
                 idea_dict['currently_meets_response_sla'] = sla_columns['currently_meets_response_sla']
                 idea_dict['currently_meets_roadmap_sla'] = sla_columns['currently_meets_roadmap_sla']
 
@@ -513,6 +520,8 @@ def sla_update(storage: SLAStorage, token: str) -> None:
             # Add SLA columns to idea
             idea_dict['response_sla'] = sla_columns['response_sla']
             idea_dict['roadmap_sla'] = sla_columns['roadmap_sla']
+            idea_dict['response_sla_in_good_standing'] = sla_columns['response_sla_in_good_standing']
+            idea_dict['roadmap_sla_in_good_standing'] = sla_columns['roadmap_sla_in_good_standing']
             idea_dict['currently_meets_response_sla'] = sla_columns['currently_meets_response_sla']
             idea_dict['currently_meets_roadmap_sla'] = sla_columns['currently_meets_roadmap_sla']
 
@@ -561,6 +570,7 @@ def sla_update(storage: SLAStorage, token: str) -> None:
 
     sla_columns_list = [
         'response_sla', 'roadmap_sla',
+        'response_sla_in_good_standing', 'roadmap_sla_in_good_standing',
         'currently_meets_response_sla', 'currently_meets_roadmap_sla'
     ]
 

@@ -57,9 +57,10 @@ def apply_idea_filters(df: pd.DataFrame, verbose: bool = True) -> Tuple[pd.DataF
     1. Only include ideas created on or after Sep 15, 2025
     2. Exclude ideas created by "Jason Ladicos" before Nov 3, 2025
     3. Exclude ideas where customer is exactly "TEST"
+    4. Exclude ideas with "Ignore" status
 
     Args:
-        df: DataFrame with ideas (must have created_at, source_name, customer columns)
+        df: DataFrame with ideas (must have created_at, source_name, customer, idea_status columns)
         verbose: If True, print filtering statistics
 
     Returns:
@@ -68,6 +69,7 @@ def apply_idea_filters(df: pd.DataFrame, verbose: bool = True) -> Tuple[pd.DataF
         - 'date_filtered': Ideas filtered by date cutoff
         - 'jason_filtered': Ideas filtered by Jason Ladicos rule
         - 'test_filtered': Ideas filtered by TEST customer rule
+        - 'ignore_filtered': Ideas filtered by "Ignore" status
         - 'total_filtered': Total ideas removed
         - 'remaining': Ideas remaining after filtering
     """
@@ -80,6 +82,7 @@ def apply_idea_filters(df: pd.DataFrame, verbose: bool = True) -> Tuple[pd.DataF
             'date_filtered': 0,
             'jason_filtered': 0,
             'test_filtered': 0,
+            'ignore_filtered': 0,
             'total_filtered': 0,
             'remaining': 0
         })
@@ -109,6 +112,15 @@ def apply_idea_filters(df: pd.DataFrame, verbose: bool = True) -> Tuple[pd.DataF
     stats['test_filtered'] = test_filter.sum()
     df = df[~test_filter].copy()
 
+    # Filter 4: Exclude ideas with "Ignore" status
+    # Only apply if idea_status column exists
+    if 'idea_status' in df.columns:
+        ignore_filter = df['idea_status'] == 'Ignore'
+        stats['ignore_filtered'] = ignore_filter.sum()
+        df = df[~ignore_filter].copy()
+    else:
+        stats['ignore_filtered'] = 0
+
     stats['total_filtered'] = initial_count - len(df)
     stats['remaining'] = len(df)
 
@@ -117,6 +129,7 @@ def apply_idea_filters(df: pd.DataFrame, verbose: bool = True) -> Tuple[pd.DataF
         print(f"  Filtered by date (before {cutoff_date.date()}): {stats['date_filtered']} ideas")
         print(f"  Filtered Jason Ladicos ideas before {jason_cutoff.date()}: {stats['jason_filtered']} ideas")
         print(f"  Filtered TEST customer ideas: {stats['test_filtered']} ideas")
+        print(f"  Filtered 'Ignore' status ideas: {stats['ignore_filtered']} ideas")
         print(f"Total filtered: {stats['total_filtered']} ideas")
         print(f"Remaining ideas: {stats['remaining']}")
 
@@ -153,14 +166,16 @@ def sla_init(storage: SLAStorage, token: str) -> None:
     ideas_resource = IdeasResource(token)
     teams_resource = TeamsResource(token)
 
-    # Fetch ALL ideas (including archived)
-    print("\nFetching all ideas from ProductPlan API...")
+    # Fetch ALL ideas (including archived and all statuses)
+    # We fetch "Ignore" status ideas too so the filtering logic can exclude them consistently
+    print("\nFetching all ideas from ProductPlan API (including all statuses)...")
     ideas_data = ideas_resource.fetch_enhanced(
         page=1,
         page_size=200,
         filters=None,
         get_all=True,
-        location_status="all"  # Include archived ideas
+        location_status="all",  # Include archived ideas
+        idea_status="all"  # Include "Ignore" status (will be filtered by apply_idea_filters)
     )
     print(f"Fetched {len(ideas_data)} ideas")
 
@@ -362,14 +377,17 @@ def sla_update(storage: SLAStorage, token: str) -> None:
     # NOTE: ProductPlan API does not currently support date-based filtering on the ideas endpoint.
     # We pass the filter anyway (in case they add support in the future), but we MUST apply
     # client-side filtering to avoid processing all ideas on every update.
-    print("\nFetching ideas from ProductPlan API...")
+    # IMPORTANT: We must fetch ALL ideas including "Ignore" status so we can detect and remove
+    # ideas that changed to "Ignore" status since the last run.
+    print("\nFetching ideas from ProductPlan API (including all statuses)...")
     print("NOTE: API does not support date filtering - will apply client-side filter after fetch")
     all_ideas = ideas_resource.fetch_enhanced(
         page=1,
         page_size=200,
         filters={'updated_at_gteq': lookback_date},  # Pass filter (may be ignored by API)
         get_all=True,
-        location_status="all"  # Include archived ideas
+        location_status="all",  # Include archived ideas
+        idea_status="all"  # MUST include "Ignore" status to detect removal
     )
     print(f"Fetched {len(all_ideas)} ideas from API")
 

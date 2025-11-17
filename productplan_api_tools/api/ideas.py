@@ -61,15 +61,18 @@ class IdeasResource(BaseResource):
     def fetch_enhanced(self, page: int = 1, page_size: int = 200,
                       filters: Optional[Dict[str, Any]] = None,
                       get_all: bool = False,
-                      location_status: str = "not_archived") -> List[Dict[str, Any]]:
+                      location_status: str = "not_archived",
+                      idea_status: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Fetch ideas with enhanced details for each idea
 
         This method:
         1. Fetches list of ideas (basic info)
-        2. For each idea, fetches detailed information (includes custom fields, timestamps, etc.)
-        3. Filters by location_status after fetching details
-        4. Returns enhanced idea dictionaries
+        2. For each idea, checks idea_status from custom dropdown fields
+        3. Filters out "Ignore" status ideas (unless idea_status='all')
+        4. For remaining ideas, fetches detailed information (includes timestamps, etc.)
+        5. Filters by location_status after fetching details
+        6. Returns enhanced idea dictionaries
 
         Args:
             page: Page number (default: 1)
@@ -78,6 +81,9 @@ class IdeasResource(BaseResource):
             get_all: Fetch all pages (default: False)
             location_status: Filter by status (default: "not_archived")
                 Options: "all", "visible", "hidden", "archived", "not_archived"
+            idea_status: Filter by idea status (default: None)
+                None: Exclude ideas with "Ignore" status (default behavior)
+                "all": Include all ideas regardless of status
 
         Returns:
             List of enhanced idea dictionaries with detailed information
@@ -86,8 +92,8 @@ class IdeasResource(BaseResource):
             Prints progress for each idea fetched
 
         Note:
-            Location filtering happens AFTER fetching details because the detailed
-            endpoint provides more accurate location_status than the list endpoint
+            - Idea status filtering happens BEFORE fetching details (saves API calls)
+            - Location filtering happens AFTER fetching details (more accurate)
         """
         # Set up location_status filter message
         if location_status in ["not_archived", "archived", "visible", "hidden"]:
@@ -98,6 +104,12 @@ class IdeasResource(BaseResource):
             print(f"Filtering for location_status: {location_status}")
         else:
             print("Getting all ideas regardless of location_status")
+
+        # Set up idea_status filter message
+        if idea_status == "all":
+            print("Getting all ideas regardless of idea status (including 'Ignore')")
+        else:
+            print("Filtering out ideas with 'Ignore' status (will be applied before fetching detailed data)")
 
         print("Fetching ideas list...")
         ideas_response = self.get_ideas(
@@ -124,9 +136,36 @@ class IdeasResource(BaseResource):
 
             try:
                 idea_id = idea['id']
+
+                # Check idea_status from custom dropdown fields (before fetching details)
+                custom_dropdown_fields = idea.get('custom_dropdown_fields', [])
+                current_idea_status = ''
+
+                # Extract idea status value
+                if isinstance(custom_dropdown_fields, list):
+                    for field in custom_dropdown_fields:
+                        if isinstance(field, dict):
+                            label = field.get('label', '')
+                            if label.lower() == 'idea status':
+                                current_idea_status = field.get('value', '')
+                                break
+
+                # Handle "Ignore" status ideas
+                if current_idea_status == "Ignore":
+                    if idea_status == "all":
+                        # Include the idea but skip fetching details (optimization for SLA tracking)
+                        print(f"Including idea {i}/{len(ideas)}: ID {idea_id} (status: Ignore, details not fetched)")
+                        enhanced_idea = idea  # Use basic list data without fetching details
+                        enhanced_ideas.append(enhanced_idea)
+                        continue
+                    else:
+                        # Skip the idea entirely
+                        print(f"Skipping idea {i}/{len(ideas)}: ID {idea_id} (status: Ignore)")
+                        continue
+
                 print(f"Processing idea {i}/{len(ideas)}: ID {idea_id}")
 
-                # Get detailed information for this idea
+                # Get detailed information for this idea (not "Ignore" status)
                 detailed_idea = self.get_idea_details(idea_id)
 
                 # Merge the detailed information with the original idea data

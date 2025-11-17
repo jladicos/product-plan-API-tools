@@ -329,6 +329,9 @@ make custom ENDPOINT=okrs OUTPUT_FORMAT=markdown OUTPUT=quarterly_review.md OBJE
 - `ALL_PAGES=true/false` - Fetch all pages (default: true)
 - `LOCATION_STATUS=status` - Filter ideas by location status (default: not_archived)
   - Options: all, visible, hidden, archived, not_archived
+- `IDEA_STATUS=status` - Include ideas with "Ignore" status (default: not set, excludes "Ignore")
+  - Options: all (include ideas with "Ignore" status)
+  - Default behavior excludes ideas with "Ignore" status from all operations
 - `OBJECTIVE_STATUS=status` - Filter objectives by status (default: active)
   - Options: active, all
 - `OUTPUT_FORMAT=format` - Output format for OKRs (default: excel)
@@ -530,6 +533,9 @@ make okrs OBJECTIVE_STATUS=all OUTPUT=complete_okr_data.xlsx
   - Tags, opportunity_ids, idea_form_id
   - All fields are flattened for Excel export
 - Default filtering excludes archived ideas (location_status != "archived")
+- Default filtering excludes ideas with "Ignore" status (use IDEA_STATUS=all to include them)
+  - "Ignore" status filtering happens before fetching detailed information (saves API calls)
+  - SLA tracking always excludes "Ignore" status ideas
 
 **Teams endpoint:**  
 - id, name

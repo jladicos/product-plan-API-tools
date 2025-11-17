@@ -47,6 +47,7 @@ def parse_arguments() -> argparse.Namespace:
         --output: Output filename (default: files/productplan_data.xlsx)
         --all-pages: Fetch all pages flag
         --location-status: Ideas filter (default: not_archived)
+        --idea-status: Ideas status filter (default: None, excludes "Ignore" status)
         --objective-status: Objectives filter (default: active)
         --output-format: excel, markdown, javascript (default: excel)
         --output-type: auto, excel, sheets - SLA storage type (default: auto)
@@ -104,6 +105,13 @@ def parse_arguments() -> argparse.Namespace:
         default='not_archived',
         choices=['all', 'visible', 'hidden', 'archived', 'not_archived'],
         help='Filter ideas by location status (default: not_archived)'
+    )
+
+    parser.add_argument(
+        '--idea-status',
+        type=str,
+        default=None,
+        help='Filter ideas by status: "all" to include ideas with "Ignore" status (default: exclude "Ignore" status)'
     )
 
     parser.add_argument(
@@ -166,7 +174,8 @@ def handle_ideas_command(args: argparse.Namespace) -> None:
         page_size=args.page_size,
         filters=filters if filters else None,
         get_all=args.all_pages,
-        location_status=args.location_status
+        location_status=args.location_status,
+        idea_status=args.idea_status
     )
 
     # Build team mapping

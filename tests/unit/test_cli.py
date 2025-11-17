@@ -24,6 +24,7 @@ class TestParseArguments:
             assert args.output == 'files/productplan_data.xlsx'
             assert args.all_pages is False
             assert args.location_status == 'not_archived'
+            assert args.idea_status is None
             assert args.objective_status == 'active'
             assert args.output_format == 'excel'
             assert args.output_type == 'auto'
@@ -85,6 +86,18 @@ class TestParseArguments:
             with pytest.raises(SystemExit):
                 cli.parse_arguments()
 
+    def test_parse_arguments_idea_status_default(self):
+        """Test that --idea-status defaults to None"""
+        with patch('sys.argv', ['script.py']):
+            args = cli.parse_arguments()
+            assert args.idea_status is None
+
+    def test_parse_arguments_idea_status_all(self):
+        """Test parsing --idea-status all"""
+        with patch('sys.argv', ['script.py', '--idea-status', 'all']):
+            args = cli.parse_arguments()
+            assert args.idea_status == 'all'
+
 
 class TestHandleIdeasCommand:
     """Test handle_ideas_command() function"""
@@ -117,7 +130,8 @@ class TestHandleIdeasCommand:
             page_size=200,
             filter=None,
             all_pages=True,
-            location_status='not_archived'
+            location_status='not_archived',
+            idea_status=None
         )
 
         cli.handle_ideas_command(args)
@@ -150,11 +164,51 @@ class TestHandleIdeasCommand:
             page_size=200,
             filter=None,
             all_pages=True,
-            location_status='not_archived'
+            location_status='not_archived',
+            idea_status=None
         )
 
         with pytest.raises(ValueError, match="API token not configured"):
             cli.handle_ideas_command(args)
+
+    @patch('productplan_api_tools.cli.config.get_api_token')
+    @patch('productplan_api_tools.cli.exporters.excel')
+    @patch('productplan_api_tools.cli.utils')
+    @patch('productplan_api_tools.cli.IdeasResource')
+    @patch('productplan_api_tools.cli.TeamsResource')
+    def test_handle_ideas_with_idea_status(self, mock_teams_res_class, mock_ideas_res_class, mock_utils, mock_excel, mock_get_token):
+        """Test that idea_status parameter is passed to fetch_enhanced"""
+        # Mock config
+        mock_get_token.return_value = "test_token"
+
+        # Mock resource instances
+        mock_ideas_res = Mock()
+        mock_teams_res = Mock()
+        mock_ideas_res_class.return_value = mock_ideas_res
+        mock_teams_res_class.return_value = mock_teams_res
+
+        # Mock data
+        mock_ideas_res.fetch_enhanced.return_value = [{"id": 1, "name": "Idea 1"}]
+        mock_teams_res.build_id_to_name_mapping.return_value = {}
+        mock_utils.process_ideas.return_value = [{"id": 1, "name": "Idea 1"}]
+
+        # Create args with idea_status='all'
+        args = Namespace(
+            output='output.xlsx',
+            page=1,
+            page_size=200,
+            filter=None,
+            all_pages=True,
+            location_status='not_archived',
+            idea_status='all'
+        )
+
+        cli.handle_ideas_command(args)
+
+        # Verify fetch_enhanced was called with idea_status='all'
+        call_kwargs = mock_ideas_res.fetch_enhanced.call_args[1]
+        assert call_kwargs['idea_status'] == 'all', \
+            "idea_status should be passed to fetch_enhanced"
 
 
 class TestHandleTeamsCommand:

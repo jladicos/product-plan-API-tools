@@ -246,17 +246,17 @@ make sla-update OUTPUT=files/custom_sla.xlsx
 #### How SLA Tracking Works
 
 **Initialization** (`make sla-init`):
-- Fetches all ideas from ProductPlan (including archived)
+- Fetches all ideas from ProductPlan (including archived, but excluding "Ignore" status)
 - Applies filtering rules to exclude test/development ideas
 - Calculates SLA dates based on current idea status
 - Creates Excel spreadsheet with full audit trail
 
 **Daily Updates** (`make sla-update`):
-- Fetches ideas updated in the last 14 days (buffer for missed runs)
+- Fetches ideas updated in the last 14 days (buffer for missed runs, excluding "Ignore" status)
 - Compares with existing spreadsheet
 - Updates changed ideas (preserves historical SLA dates)
 - Adds new ideas that pass filtering
-- Removes ideas that now fail filtering
+- Removes ideas that now fail filtering (including ideas changed to "Ignore" status)
 
 **SLA Date Logic**:
 - **response_sla**: Set once when status changes from "On deck" (never cleared)
@@ -444,9 +444,18 @@ make ideas FILTERS="name:Feature Request"
 # Multiple filters
 make ideas FILTERS="name:Feature Request channel:Sales"
 
+# Filter ideas by location status
+make ideas LOCATION_STATUS=all          # Include all ideas (visible, hidden, archived)
+make ideas LOCATION_STATUS=not_archived # Exclude archived ideas (default)
+make ideas LOCATION_STATUS=visible      # Only visible ideas
+
+# Filter ideas by idea status (exclude/include "Ignore" status)
+make ideas                              # Excludes ideas with "Ignore" status (default)
+make ideas IDEA_STATUS=all              # Includes ideas with "Ignore" status
+
 # Filter objectives by status
-make okrs OBJECTIVE_STATUS=all  # Include inactive objectives
-make okrs OBJECTIVE_STATUS=active  # Active objectives only (default)
+make okrs OBJECTIVE_STATUS=all          # Include inactive objectives
+make okrs OBJECTIVE_STATUS=active       # Active objectives only (default)
 ```
 
 ### Pagination Options
@@ -516,6 +525,8 @@ docker run --rm -v $(pwd):/app productplan-api \
 | `PAGE_SIZE` | Number of items per page | 200 |
 | `ALL_PAGES` | Fetch all pages | true |
 | `FILTERS` | Space-separated key:value pairs | (none) |
+| `LOCATION_STATUS` | Filter ideas by location | not_archived |
+| `IDEA_STATUS` | Include ideas with "Ignore" status | (none - excludes "Ignore") |
 | `OBJECTIVE_STATUS` | Filter objectives by status | active |
 | `OUTPUT_FORMAT` | Output format for OKRs | excel |
 | `OUTPUT_TYPE` | SLA storage type | auto |
@@ -530,6 +541,8 @@ When using Docker directly (not recommended - use `make` commands instead):
 - `--filter`: Filter results (can be used multiple times with KEY VALUE pairs)
 - `--output`: Output filename (default: files/productplan_data.xlsx)
 - `--all-pages`: Fetch all pages of results automatically (ignores the --page parameter)
+- `--location-status`: Filter ideas by location status (available: 'all', 'visible', 'hidden', 'archived', 'not_archived'; default: not_archived)
+- `--idea-status`: Include ideas with "Ignore" status (available: 'all'; default: None - excludes "Ignore" status)
 - `--objective-status`: Filter objectives by status (available: 'active', 'all'; default: active)
 - `--output-format`: Output format for OKRs (available: 'excel', 'markdown'; default: excel)
 - `--output-type`: Storage type for SLA tracking (available: 'auto', 'excel', 'sheets'; default: auto)

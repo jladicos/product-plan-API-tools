@@ -7,6 +7,7 @@ PAGE ?= 1
 PAGE_SIZE ?= 200
 ALL_PAGES ?= true
 LOCATION_STATUS ?= not_archived
+IDEA_STATUS ?=
 OBJECTIVE_STATUS ?= active
 OUTPUT_FORMAT ?= excel
 OUTPUT_TYPE ?= auto
@@ -29,6 +30,12 @@ OBJECTIVE_STATUS := $(objective_status)
 endif
 ifdef location_status
 LOCATION_STATUS := $(location_status)
+endif
+ifdef idea_status
+IDEA_STATUS := $(idea_status)
+endif
+ifdef idea-status
+IDEA_STATUS := $(idea-status)
 endif
 ifdef output_format
 OUTPUT_FORMAT := $(output_format)
@@ -82,6 +89,8 @@ help:
 	@echo "  ALL_PAGES=true/false   - Fetch all pages (default: $(ALL_PAGES))"
 	@echo "  LOCATION_STATUS=status - Filter ideas by location status (default: $(LOCATION_STATUS))"
 	@echo "                           Options: all, visible, hidden, archived, not_archived"
+	@echo "  IDEA_STATUS=status     - Filter ideas by idea status (default: exclude 'Ignore')"
+	@echo "                           Options: all (include ideas with 'Ignore' status)"
 	@echo "  OBJECTIVE_STATUS=status - Filter objectives by status (default: $(OBJECTIVE_STATUS))"
 	@echo "                            Options: active, all"
 	@echo "  OUTPUT_FORMAT=format    - Output format (default: $(OUTPUT_FORMAT))"
@@ -99,6 +108,7 @@ help:
 	@echo "  make ideas FILTERS=\"name:Feature Request channel:Sales\""
 	@echo "  make ideas LOCATION_STATUS=visible"
 	@echo "  make ideas LOCATION_STATUS=all"
+	@echo "  make ideas IDEA_STATUS=all                  # Include ideas with 'Ignore' status"
 	@echo "  make teams ALL_PAGES=false PAGE=2"
 	@echo "  make idea-forms OUTPUT=files/forms.xlsx"
 	@echo "  make okrs output=files/objectives.xlsx"
@@ -170,6 +180,7 @@ ideas:
 		--page-size $(PAGE_SIZE) \
 		--output $(OUTPUT) \
 		--location-status $(LOCATION_STATUS) \
+		$(if $(IDEA_STATUS),--idea-status $(IDEA_STATUS),) \
 		$(call all_pages_flag) \
 		$(call process_filters)
 	@echo "Ideas saved to $(OUTPUT)"
@@ -270,6 +281,7 @@ custom:
 		--page-size $(PAGE_SIZE) \
 		--output $(OUTPUT) \
 		--location-status $(LOCATION_STATUS) \
+		$(if $(IDEA_STATUS),--idea-status $(IDEA_STATUS),) \
 		--objective-status $(OBJECTIVE_STATUS) \
 		--output-format $(OUTPUT_FORMAT) \
 		$(call all_pages_flag) \

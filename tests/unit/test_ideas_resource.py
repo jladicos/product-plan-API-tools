@@ -242,3 +242,190 @@ class TestIdeasResourceFetchEnhanced:
         results = resource.fetch_enhanced()
 
         assert results == []
+
+    @patch.object(IdeasResource, 'fetch_details')
+    @patch.object(IdeasResource, 'fetch_list')
+    def test_fetch_enhanced_excludes_ignore_status_by_default(self, mock_fetch_list, mock_fetch_details):
+        """Test that ideas with 'Ignore' status are excluded by default"""
+        mock_fetch_list.return_value = {
+            "results": [
+                {"id": 101, "custom_dropdown_fields": [{"label": "idea status", "value": "On deck"}]},
+                {"id": 102, "custom_dropdown_fields": [{"label": "idea status", "value": "Ignore"}]},
+                {"id": 103, "custom_dropdown_fields": [{"label": "idea status", "value": "Accepted"}]}
+            ]
+        }
+
+        # Should only fetch details for non-Ignore ideas (101 and 103)
+        mock_fetch_details.side_effect = [
+            {"id": 101, "location_status": "visible"},
+            {"id": 103, "location_status": "visible"}
+        ]
+
+        resource = IdeasResource(token="test_token")
+        results = resource.fetch_enhanced()
+
+        # Should exclude idea 102 with "Ignore" status
+        assert len(results) == 2
+        assert results[0]["id"] == 101
+        assert results[1]["id"] == 103
+        # Should only call fetch_details twice (not for "Ignore" idea)
+        assert mock_fetch_details.call_count == 2
+
+    @patch.object(IdeasResource, 'fetch_details')
+    @patch.object(IdeasResource, 'fetch_list')
+    def test_fetch_enhanced_includes_ignore_status_when_all(self, mock_fetch_list, mock_fetch_details):
+        """Test that ideas with 'Ignore' status are included when idea_status='all'"""
+        mock_fetch_list.return_value = {
+            "results": [
+                {"id": 101, "custom_dropdown_fields": [{"label": "idea status", "value": "On deck"}]},
+                {"id": 102, "custom_dropdown_fields": [{"label": "idea status", "value": "Ignore"}]},
+                {"id": 103, "custom_dropdown_fields": [{"label": "idea status", "value": "Accepted"}]}
+            ]
+        }
+
+        # Should fetch details ONLY for non-Ignore ideas (optimization)
+        mock_fetch_details.side_effect = [
+            {"id": 101, "location_status": "visible"},
+            {"id": 103, "location_status": "visible"}
+        ]
+
+        resource = IdeasResource(token="test_token")
+        results = resource.fetch_enhanced(idea_status="all")
+
+        # Should include all 3 ideas
+        assert len(results) == 3
+        assert results[0]["id"] == 101
+        assert results[1]["id"] == 102
+        assert results[2]["id"] == 103
+        # Should call fetch_details only 2 times (skips "Ignore" idea for efficiency)
+        assert mock_fetch_details.call_count == 2
+
+    @patch.object(IdeasResource, 'fetch_details')
+    @patch.object(IdeasResource, 'fetch_list')
+    def test_fetch_enhanced_excludes_ignore_case_insensitive(self, mock_fetch_list, mock_fetch_details):
+        """Test that 'idea status' field matching is case-insensitive"""
+        mock_fetch_list.return_value = {
+            "results": [
+                {"id": 101, "custom_dropdown_fields": [{"label": "Idea Status", "value": "Ignore"}]},
+                {"id": 102, "custom_dropdown_fields": [{"label": "IDEA STATUS", "value": "Ignore"}]},
+                {"id": 103, "custom_dropdown_fields": [{"label": "idea status", "value": "Accepted"}]}
+            ]
+        }
+
+        mock_fetch_details.side_effect = [
+            {"id": 103, "location_status": "visible"}
+        ]
+
+        resource = IdeasResource(token="test_token")
+        results = resource.fetch_enhanced()
+
+        # Should exclude ideas 101 and 102 (case-insensitive field matching)
+        assert len(results) == 1
+        assert results[0]["id"] == 103
+        assert mock_fetch_details.call_count == 1
+
+    @patch.object(IdeasResource, 'fetch_details')
+    @patch.object(IdeasResource, 'fetch_list')
+    def test_fetch_enhanced_handles_missing_custom_dropdown_fields(self, mock_fetch_list, mock_fetch_details):
+        """Test that ideas without custom_dropdown_fields are not filtered out"""
+        mock_fetch_list.return_value = {
+            "results": [
+                {"id": 101, "custom_dropdown_fields": [{"label": "idea status", "value": "On deck"}]},
+                {"id": 102},  # Missing custom_dropdown_fields
+                {"id": 103, "custom_dropdown_fields": None}  # None value
+            ]
+        }
+
+        mock_fetch_details.side_effect = [
+            {"id": 101, "location_status": "visible"},
+            {"id": 102, "location_status": "visible"},
+            {"id": 103, "location_status": "visible"}
+        ]
+
+        resource = IdeasResource(token="test_token")
+        results = resource.fetch_enhanced()
+
+        # Should include all ideas (missing fields don't have "Ignore" status)
+        assert len(results) == 3
+        assert mock_fetch_details.call_count == 3
+
+    @patch.object(IdeasResource, 'fetch_details')
+    @patch.object(IdeasResource, 'fetch_list')
+    def test_fetch_enhanced_idea_status_combined_with_location_status(self, mock_fetch_list, mock_fetch_details):
+        """Test that idea_status and location_status filters work together"""
+        mock_fetch_list.return_value = {
+            "results": [
+                {"id": 101, "custom_dropdown_fields": [{"label": "idea status", "value": "On deck"}]},
+                {"id": 102, "custom_dropdown_fields": [{"label": "idea status", "value": "Ignore"}]},
+                {"id": 103, "custom_dropdown_fields": [{"label": "idea status", "value": "Accepted"}]}
+            ]
+        }
+
+        # Mix of location statuses
+        mock_fetch_details.side_effect = [
+            {"id": 101, "location_status": "archived"},  # Filtered by location_status
+            {"id": 103, "location_status": "visible"}     # Passes both filters
+        ]
+
+        resource = IdeasResource(token="test_token")
+        results = resource.fetch_enhanced(location_status="not_archived")
+
+        # Should exclude 102 (Ignore status) and 101 (archived)
+        assert len(results) == 1
+        assert results[0]["id"] == 103
+        # Should fetch details for 101 and 103 (102 skipped due to Ignore status)
+        assert mock_fetch_details.call_count == 2
+
+    @patch.object(IdeasResource, 'fetch_details')
+    @patch.object(IdeasResource, 'fetch_list')
+    def test_fetch_enhanced_handles_none_value_in_status_field(self, mock_fetch_list, mock_fetch_details):
+        """Test that ideas with None value in status field are not filtered out"""
+        mock_fetch_list.return_value = {
+            "results": [
+                {"id": 101, "custom_dropdown_fields": [{"label": "idea status", "value": None}]},
+                {"id": 102, "custom_dropdown_fields": [{"label": "idea status", "value": ""}]},
+                {"id": 103, "custom_dropdown_fields": [{"label": "idea status", "value": "On deck"}]}
+            ]
+        }
+
+        mock_fetch_details.side_effect = [
+            {"id": 101, "location_status": "visible"},
+            {"id": 102, "location_status": "visible"},
+            {"id": 103, "location_status": "visible"}
+        ]
+
+        resource = IdeasResource(token="test_token")
+        results = resource.fetch_enhanced()
+
+        # All ideas should be included (None and empty string are not "Ignore")
+        assert len(results) == 3
+        assert mock_fetch_details.call_count == 3
+
+    @patch.object(IdeasResource, 'fetch_details')
+    @patch.object(IdeasResource, 'fetch_list')
+    def test_fetch_enhanced_multiple_dropdown_fields(self, mock_fetch_list, mock_fetch_details):
+        """Test that only the 'idea status' field is used for filtering"""
+        mock_fetch_list.return_value = {
+            "results": [
+                {"id": 101, "custom_dropdown_fields": [
+                    {"label": "priority", "value": "Ignore"},  # Different field
+                    {"label": "idea status", "value": "On deck"}
+                ]},
+                {"id": 102, "custom_dropdown_fields": [
+                    {"label": "idea status", "value": "Ignore"},
+                    {"label": "priority", "value": "High"}
+                ]}
+            ]
+        }
+
+        mock_fetch_details.side_effect = [
+            {"id": 101, "location_status": "visible"}
+        ]
+
+        resource = IdeasResource(token="test_token")
+        results = resource.fetch_enhanced()
+
+        # Should only look at "idea status" field, not "priority"
+        assert len(results) == 1
+        assert results[0]["id"] == 101
+        assert mock_fetch_details.call_count == 1

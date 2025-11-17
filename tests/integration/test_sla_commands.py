@@ -264,7 +264,8 @@ class TestSLAInit:
                 page_size=200,
                 filters=None,
                 get_all=True,
-                location_status="all"  # Should fetch ALL ideas including archived
+                location_status="all",  # Should fetch ALL ideas including archived
+                idea_status="all"  # Should fetch ALL statuses including "Ignore"
             )
 
             # Verify team mapping was built

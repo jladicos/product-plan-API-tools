@@ -346,3 +346,74 @@ class TestMakefileOtherVariables:
             cwd='/app'
         )
         assert '--output-format markdown' in result.stdout
+
+
+class TestMakefileIdeaStatusParameter:
+    """Test IDEA_STATUS parameter support in Makefile"""
+
+    def test_ideas_without_idea_status(self):
+        """Test that 'make ideas' does not pass --idea-status by default"""
+        result = subprocess.run(
+            ['make', '-n', 'ideas'],
+            capture_output=True,
+            text=True,
+            cwd='/app'
+        )
+        # Should not include --idea-status when not specified
+        assert '--idea-status' not in result.stdout, \
+            "ideas command should not include --idea-status when not specified"
+
+    def test_ideas_with_idea_status_all(self):
+        """Test that IDEA_STATUS=all passes --idea-status all"""
+        result = subprocess.run(
+            ['make', '-n', 'ideas', 'IDEA_STATUS=all'],
+            capture_output=True,
+            text=True,
+            cwd='/app'
+        )
+        assert '--idea-status all' in result.stdout, \
+            "IDEA_STATUS=all should pass --idea-status all"
+
+    def test_ideas_lowercase_idea_status(self):
+        """Test that lowercase idea_status works"""
+        result = subprocess.run(
+            ['make', '-n', 'ideas', 'idea_status=all'],
+            capture_output=True,
+            text=True,
+            cwd='/app'
+        )
+        assert '--idea-status all' in result.stdout, \
+            "idea_status=all should pass --idea-status all"
+
+    def test_ideas_hyphenated_lowercase_idea_status(self):
+        """Test that lowercase idea-status works"""
+        result = subprocess.run(
+            ['make', '-n', 'ideas', 'idea-status=all'],
+            capture_output=True,
+            text=True,
+            cwd='/app'
+        )
+        assert '--idea-status all' in result.stdout, \
+            "idea-status=all should pass --idea-status all"
+
+    def test_custom_command_with_idea_status(self):
+        """Test that IDEA_STATUS works with custom command"""
+        result = subprocess.run(
+            ['make', '-n', 'custom', 'ENDPOINT=ideas', 'IDEA_STATUS=all'],
+            capture_output=True,
+            text=True,
+            cwd='/app'
+        )
+        assert '--idea-status all' in result.stdout, \
+            "custom command with IDEA_STATUS=all should pass --idea-status all"
+
+    def test_custom_command_without_idea_status(self):
+        """Test that custom command does not pass --idea-status when not specified"""
+        result = subprocess.run(
+            ['make', '-n', 'custom', 'ENDPOINT=ideas'],
+            capture_output=True,
+            text=True,
+            cwd='/app'
+        )
+        assert '--idea-status' not in result.stdout, \
+            "custom command should not include --idea-status when not specified"
